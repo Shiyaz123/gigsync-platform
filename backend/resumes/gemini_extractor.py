@@ -81,7 +81,10 @@ def extract_with_gemini(
         from google import genai
         from google.genai import types
 
-        client = genai.Client(api_key=api_key)
+        client = genai.Client(
+            api_key=api_key,
+            http_options=types.HttpOptions(timeout=25000)
+        )
 
         contents = []
 
@@ -93,7 +96,7 @@ def extract_with_gemini(
             contents.append(f"RESUME TEXT:\n---\n{text}\n---")
 
         response = client.models.generate_content(
-            model="gemini-3.8-flash",
+            model="gemini-3.5-flash-lite",
             contents=contents,
             config=types.GenerateContentConfig(
                 system_instruction=SYSTEM_PROMPT,

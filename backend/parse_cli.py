@@ -57,7 +57,7 @@ def main():
             "extracted_profile": cleaned_profile,
             "confidence_score": confidence,
             "warnings": all_warnings,
-            "source_method": "gemini-3.8-flash" if is_gemini else "pymupdf_python_parser"
+            "source_method": "gemini-3.5-flash-lite" if is_gemini else "pymupdf_python_parser"
         }
         print(json.dumps(output))
 
