@@ -212,6 +212,11 @@ export const App: React.FC = () => {
           <LandingPage
             profile={profile}
             onNavigate={handleNavigate}
+            onUpdateProfile={(updated) => {
+              setProfile(updated);
+              api.getJobs().then(setJobs).catch(() => {});
+            }}
+            showToast={showToast}
           />
         )}
 
@@ -231,6 +236,7 @@ export const App: React.FC = () => {
             jobs={jobs}
             targetJobId={selectedJobId}
             showToast={showToast}
+            onNavigate={handleNavigate}
           />
         )}
 

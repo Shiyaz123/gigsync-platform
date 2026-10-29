@@ -112,6 +112,23 @@ export const AiResumeAssistantPage: React.FC<AiResumeAssistantPageProps> = ({
     }
   };
 
+  const handleConfirmAndFindJobs = async () => {
+    try {
+      const confirmed = {
+        ...draftProfile,
+        confirmedFactsOnly: true,
+        lastConfirmedAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+      await api.updateProfile(confirmed);
+      onApplyProfile(confirmed);
+      showToast('Profile Confirmed', 'Your resume has been saved. Discovering relevant jobs...', 'success');
+      onNavigate('jobs');
+    } catch (err: any) {
+      showToast('Error', err.message || 'Could not save profile.', 'error');
+    }
+  };
+
   const handleConfirmAndFinish = async () => {
     try {
       const confirmed = {
@@ -136,19 +153,28 @@ export const AiResumeAssistantPage: React.FC<AiResumeAssistantPageProps> = ({
         <div>
           <span className="section-num">Workflow Step 01 / Option B</span>
           <h1 className="font-serif text-3xl sm:text-4xl text-[#20251F] mt-1">
-            Conversational Resume Assistant
+            Build Resume with AI Assistant
           </h1>
           <p className="text-sm text-[#686C63] mt-1">
-            Guided interactive builder. Answers are verified and mapped into clean LaTeX sections without hallucinated metrics.
+            Guided conversational builder. Answers are verified and mapped into clean LaTeX sections without hallucinated metrics.
           </p>
         </div>
 
-        <button
-          onClick={handleConfirmAndFinish}
-          className="btn-editorial btn-editorial-primary text-xs px-4 py-2"
-        >
-          Confirm Facts & Open in Resume Studio <ArrowRight size={14} strokeWidth={1.5} />
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleConfirmAndFinish}
+            className="btn-editorial btn-editorial-outline text-xs px-3.5 py-2"
+          >
+            Preview Resume
+          </button>
+          <button
+            onClick={handleConfirmAndFindJobs}
+            className="btn-editorial btn-editorial-primary text-xs px-4 py-2 font-semibold flex items-center gap-2"
+          >
+            <span>Find Jobs for Me</span>
+            <ArrowRight size={14} strokeWidth={2} />
+          </button>
+        </div>
       </div>
 
       {/* Two-Column Workspace */}
@@ -314,13 +340,23 @@ export const AiResumeAssistantPage: React.FC<AiResumeAssistantPageProps> = ({
               )}
             </div>
 
-            {/* Completion Button */}
-            <button
-              onClick={handleConfirmAndFinish}
-              className="btn-editorial btn-editorial-dark w-full text-xs py-2.5 mt-2"
-            >
-              Confirm Facts & Open in Resume Studio <ArrowRight size={14} strokeWidth={1.5} />
-            </button>
+            {/* Completion Buttons */}
+            <div className="space-y-2 pt-2">
+              <button
+                onClick={handleConfirmAndFindJobs}
+                className="btn-editorial btn-editorial-primary w-full text-xs py-3 flex items-center justify-center gap-2 font-semibold shadow-sm"
+              >
+                <span>Find Jobs for Me</span>
+                <ArrowRight size={14} strokeWidth={2} />
+              </button>
+
+              <button
+                onClick={handleConfirmAndFinish}
+                className="btn-editorial btn-editorial-secondary w-full text-xs py-2 flex items-center justify-center gap-1.5"
+              >
+                <span>Preview in Resume Studio</span>
+              </button>
+            </div>
           </div>
         </div>
       </div>

@@ -4,11 +4,10 @@ import {
   Briefcase,
   Compass,
   UserCheck,
-  LayoutDashboard,
   Bot,
-  Info,
   ShieldCheck,
-  RotateCcw
+  RotateCcw,
+  ArrowLeft
 } from 'lucide-react';
 
 interface NavbarProps {
@@ -24,14 +23,13 @@ export const Navbar: React.FC<NavbarProps> = ({
   isGuest,
   onResetDemo
 }) => {
-  const navItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { id: 'resume', label: 'Resume Studio', icon: FileText },
-    { id: 'ai-assistant', label: 'AI Assistant', icon: Bot },
-    { id: 'profile', label: 'Profile & Upload', icon: UserCheck },
+  const isHomepage = currentTab === 'landing';
+
+  const workspaceNavItems = [
     { id: 'jobs', label: 'Find Jobs', icon: Briefcase },
+    { id: 'resume', label: 'Resume Studio', icon: FileText },
     { id: 'roadmap', label: 'Roadmap', icon: Compass },
-    { id: 'how-it-works', label: 'How it Works', icon: Info }
+    { id: 'profile', label: 'Profile', icon: UserCheck }
   ];
 
   return (
@@ -50,36 +48,44 @@ export const Navbar: React.FC<NavbarProps> = ({
           </span>
         </div>
 
-        {/* Editorial Navigation Links */}
-        <nav className="hidden md:flex items-center gap-1">
-          {navItems.map(item => {
-            const Icon = item.icon;
-            const isActive = currentTab === item.id;
-            return (
-              <button
-                key={item.id}
-                onClick={() => setCurrentTab(item.id)}
-                className={`flex items-center gap-2 px-3 py-1.5 text-[13px] font-medium transition-all ${
-                  isActive
-                    ? 'text-[#20251F] border-b-2 border-[#D9534F] font-semibold'
-                    : 'text-[#686C63] hover:text-[#20251F]'
-                }`}
-              >
-                <Icon size={15} strokeWidth={1.5} className={isActive ? 'text-[#D9534F]' : ''} />
-                <span>{item.label}</span>
-              </button>
-            );
-          })}
-        </nav>
+        {/* Minimal Secondary Navigation (Hidden on Homepage to keep homepage clean) */}
+        {!isHomepage ? (
+          <nav className="flex items-center gap-1">
+            <button
+              onClick={() => setCurrentTab('landing')}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-[13px] font-medium text-[#686C63] hover:text-[#20251F] transition-colors"
+            >
+              <ArrowLeft size={14} strokeWidth={1.5} />
+              <span>Home</span>
+            </button>
 
-        {/* Right Actions */}
+            {workspaceNavItems.map(item => {
+              const Icon = item.icon;
+              const isActive = currentTab === item.id;
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => setCurrentTab(item.id)}
+                  className={`flex items-center gap-2 px-3 py-1.5 text-[13px] font-medium transition-all ${
+                    isActive
+                      ? 'text-[#20251F] border-b-2 border-[#D9534F] font-semibold'
+                      : 'text-[#686C63] hover:text-[#20251F]'
+                  }`}
+                >
+                  <Icon size={15} strokeWidth={1.5} className={isActive ? 'text-[#D9534F]' : ''} />
+                  <span>{item.label}</span>
+                </button>
+              );
+            })}
+          </nav>
+        ) : (
+          <div className="hidden sm:block text-xs font-mono text-[#686C63]">
+            Editorial Career Workspace
+          </div>
+        )}
+
+        {/* Right Minimal Utility Controls */}
         <div className="flex items-center gap-3">
-          {isGuest && (
-            <span className="tag-mono hidden lg:inline-block text-[#686C63]">
-              Demo Mode
-            </span>
-          )}
-
           <button
             onClick={onResetDemo}
             className="flex items-center gap-1.5 px-2.5 py-1 text-[12px] font-mono border border-[#D5D5CC] bg-[#E8E7DF] text-[#20251F] hover:border-[#20251F] transition-colors rounded-[2px]"
@@ -99,13 +105,6 @@ export const Navbar: React.FC<NavbarProps> = ({
             title="Privacy & Data Governance"
           >
             <ShieldCheck size={16} strokeWidth={1.5} />
-          </button>
-
-          <button
-            onClick={() => setCurrentTab('resume')}
-            className="btn-editorial btn-editorial-primary text-xs py-1.5 px-3"
-          >
-            Build Resume
           </button>
         </div>
       </div>

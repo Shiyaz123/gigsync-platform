@@ -16,7 +16,9 @@ import {
   Eye,
   History,
   Target,
-  ShieldCheck
+  ShieldCheck,
+  Briefcase,
+  ArrowRight
 } from 'lucide-react';
 
 interface ResumeStudioPageProps {
@@ -24,13 +26,15 @@ interface ResumeStudioPageProps {
   jobs: JobListing[];
   targetJobId?: string;
   showToast: (title: string, message?: string, type?: 'success' | 'warning' | 'error' | 'info') => void;
+  onNavigate?: (tab: string, context?: any) => void;
 }
 
 export const ResumeStudioPage: React.FC<ResumeStudioPageProps> = ({
   profile,
   jobs,
   targetJobId,
-  showToast
+  showToast,
+  onNavigate
 }) => {
   const [selectedTemplate, setSelectedTemplate] = useState<'modern' | 'academic' | 'executive' | 'minimalist'>('modern');
   const [viewMode, setViewMode] = useState<'preview' | 'latex' | 'versions'>('preview');
@@ -122,10 +126,20 @@ export const ResumeStudioPage: React.FC<ResumeStudioPageProps> = ({
 
         {/* Action Buttons */}
         <div className="flex items-center gap-2.5 flex-wrap">
-          <button onClick={handlePrintPdf} className="btn-editorial btn-editorial-primary text-xs px-3.5 py-2">
+          {onNavigate && (
+            <button
+              onClick={() => onNavigate('jobs')}
+              className="btn-editorial btn-editorial-primary text-xs px-4 py-2 font-semibold flex items-center gap-2 shadow-sm"
+            >
+              <Briefcase size={14} strokeWidth={1.5} />
+              <span>Find Jobs for Me</span>
+              <ArrowRight size={14} strokeWidth={2} />
+            </button>
+          )}
+          <button onClick={handlePrintPdf} className="btn-editorial btn-editorial-secondary text-xs px-3.5 py-2">
             <Printer size={14} strokeWidth={1.5} /> Print / Export PDF
           </button>
-          <button onClick={handleDownloadTex} className="btn-editorial btn-editorial-secondary text-xs px-3.5 py-2">
+          <button onClick={handleDownloadTex} className="btn-editorial btn-editorial-outline text-xs px-3.5 py-2">
             <Download size={14} strokeWidth={1.5} /> Download .tex
           </button>
           <button onClick={handleCopyLatex} className="btn-editorial btn-editorial-outline text-xs px-3.5 py-2">

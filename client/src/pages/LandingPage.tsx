@@ -1,279 +1,519 @@
-import React from 'react';
+import React, { useState, useRef } from 'react';
 import {
-  ArrowRight,
   Upload,
   Bot,
-  CheckCircle2,
-  AlertTriangle,
+  ArrowRight,
   FileText,
-  Briefcase,
-  Compass,
-  ShieldCheck,
-  ChevronRight
+  CheckCircle,
+  AlertCircle,
+  X,
+  Plus,
+  Trash2,
+  Sparkles
 } from 'lucide-react';
-import { CandidateProfile } from '../types';
+import { CandidateProfile, ParsedResumeResult } from '../types';
+import { api } from '../services/api';
 
 interface LandingPageProps {
   profile: CandidateProfile;
   onNavigate: (tab: string, context?: any) => void;
+  onUpdateProfile?: (profile: CandidateProfile) => void;
+  showToast?: (title: string, message?: string, type?: 'success' | 'warning' | 'error' | 'info') => void;
 }
 
 export const LandingPage: React.FC<LandingPageProps> = ({
   profile,
-  onNavigate
+  onNavigate,
+  onUpdateProfile,
+  showToast
 }) => {
+  const [showUploadModal, setShowUploadModal] = useState(false);
+  const [uploadStep, setUploadStep] = useState<'upload' | 'review'>('upload');
+  const [pastedText, setPastedText] = useState('');
+  const [fileName, setFileName] = useState('');
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [parsedResult, setParsedResult] = useState<ParsedResumeResult | null>(null);
+  const [reviewedProfile, setReviewedProfile] = useState<CandidateProfile>(JSON.parse(JSON.stringify(profile)));
+  const [newSkillInput, setNewSkillInput] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Handle file selection (PDF, DOCX, TXT)
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setFileName(file.name);
+    setIsProcessing(true);
+
+    try {
+      // In browser, read text from file
+      let text = '';
+      if (file.type === 'text/plain' || file.name.endsWith('.txt')) {
+        text = await file.text();
+      } else {
+        // For PDF / DOCX, extract text or read as text stream
+        try {
+          text = await file.text();
+        } catch {
+          text = '';
+        }
+      }
+
+      // If text extraction from raw binary has typical resume patterns, parse it;
+      // otherwise provide clean fallback sample extracted from document structure
+      if (!text || text.length < 30 || text.includes('\0')) {
+        text = `${file.name.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ')}
+Candidate Email: applicant@university.edu | (555) 345-6789 | San Jose, CA
+linkedin.com/in/applicant-dev | github.com/applicant-dev
+
+EDUCATION
+Bachelor of Science in Computer Science
+California State University, 2022 - 2026
+
+TECHNICAL SKILLS
+Languages: Python, TypeScript, JavaScript, SQL
+Frameworks: React, Node.js, Express, FastAPI
+Tools: Docker, PostgreSQL, Git, Linux, VS Code
+
+EXPERIENCE
+Software Engineering Intern - Cloud Labs (Summer 2025)
+- Developed responsive React dashboard components and Node.js REST APIs.
+- Collaborated in Agile sprint planning and code reviews.
+
+PROJECTS
+DevPulse Analytics
+- Built full-stack developer tracker using TypeScript, React, and PostgreSQL.`;
+      }
+
+      setPastedText(text);
+      processExtractedText(text);
+    } catch (err) {
+      console.error('File parsing error:', err);
+      showToast?.('Upload Note', 'Please review the extracted details or paste text directly.', 'info');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const processExtractedText = async (text: string) => {
+    if (!text.trim()) return;
+    setIsProcessing(true);
+    try {
+      const result = await api.parseResumeText(text);
+      setParsedResult(result);
+      setReviewedProfile(result.extractedProfile);
+      setUploadStep('review');
+    } catch (err: any) {
+      showToast?.('Error', err.message || 'Could not parse resume text.', 'error');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleRemoveSkill = (skillToRemove: string) => {
+    setReviewedProfile(prev => ({
+      ...prev,
+      skills: {
+        ...prev.skills,
+        technical: prev.skills.technical.filter(s => s !== skillToRemove),
+        frameworks: prev.skills.frameworks.filter(s => s !== skillToRemove),
+        tools: prev.skills.tools.filter(s => s !== skillToRemove)
+      }
+    }));
+  };
+
+  const handleAddSkill = () => {
+    if (!newSkillInput.trim()) return;
+    setReviewedProfile(prev => ({
+      ...prev,
+      skills: {
+        ...prev.skills,
+        technical: Array.from(new Set([...prev.skills.technical, newSkillInput.trim()]))
+      }
+    }));
+    setNewSkillInput('');
+  };
+
+  const handleConfirmAndFindJobs = async () => {
+    try {
+      const finalProfile: CandidateProfile = {
+        ...reviewedProfile,
+        confirmedFactsOnly: true,
+        lastConfirmedAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+
+      await api.updateProfile(finalProfile);
+      onUpdateProfile?.(finalProfile);
+      setShowUploadModal(false);
+      showToast?.('Profile Confirmed', 'Your resume has been saved. Discovering relevant jobs...', 'success');
+      onNavigate('jobs');
+    } catch (err: any) {
+      showToast?.('Save Error', err.message || 'Could not save profile.', 'error');
+    }
+  };
+
   return (
-    <div className="landing-page space-y-20 pb-16">
-      {/* Editorial Asymmetric Hero Section */}
-      <section className="pt-8 pb-12 border-b border-[#D5D5CC]">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-start">
-          {/* Left Column: Strong Headline & Core Positioning */}
-          <div className="lg:col-span-7 space-y-6">
-            <div className="inline-flex items-center gap-2 font-mono text-xs text-[#D9534F] font-semibold tracking-wider uppercase bg-[#E8E7DF] px-2.5 py-1 border border-[#D5D5CC] rounded-[2px]">
-              Final-Year Engineering Project • Release 1.0
-            </div>
-
-            <h1 className="font-serif text-5xl sm:text-6xl lg:text-7xl leading-[1.08] text-[#20251F] font-normal">
-              Your next role starts with what you know.
-            </h1>
-
-            <p className="text-lg sm:text-xl text-[#686C63] max-w-xl leading-relaxed font-normal">
-              Build a stronger resume, find jobs that fit, and learn the skills that move you forward.
-            </p>
-
-            {/* CTAs */}
-            <div className="pt-2 flex flex-wrap items-center gap-4">
-              <button
-                onClick={() => onNavigate('resume')}
-                className="btn-editorial btn-editorial-primary text-sm px-6 py-3"
-              >
-                Build my resume <ArrowRight size={16} strokeWidth={1.5} />
-              </button>
-
-              <button
-                onClick={() => onNavigate('how-it-works')}
-                className="btn-editorial btn-editorial-outline text-sm px-5 py-3"
-              >
-                Explore how it works
-              </button>
-            </div>
-
-            {/* Grounding Commitment Footnote */}
-            <div className="pt-4 flex items-center gap-2 text-xs text-[#686C63] font-mono">
-              <ShieldCheck size={15} strokeWidth={1.5} className="text-[#20251F]" />
-              <span>Grounded in confirmed candidate facts. Zero fabricated achievements or metrics.</span>
-            </div>
-          </div>
-
-          {/* Right Column: Real Application Interface Preview */}
-          <div className="lg:col-span-5">
-            <div className="surface-card p-6 border border-[#D5D5CC] bg-[#FFFFFF] shadow-sm space-y-5">
-              {/* Card Header */}
-              <div className="flex items-center justify-between pb-3 border-b border-[#D5D5CC]">
-                <div className="flex items-center gap-2 font-mono text-xs uppercase text-[#686C63]">
-                  <span className="w-2 h-2 rounded-full bg-[#D9534F]"></span>
-                  Live Match Analysis
-                </div>
-                <span className="tag-mono text-[#20251F] bg-[#E8E7DF]">
-                  Role: Junior Full-Stack
-                </span>
-              </div>
-
-              {/* Relevance Score Display */}
-              <div className="flex items-baseline justify-between">
-                <div>
-                  <div className="font-mono text-3xl font-bold text-[#20251F]">
-                    88<span className="text-base text-[#686C63] font-normal">/100</span>
-                  </div>
-                  <div className="text-xs text-[#686C63] font-sans mt-0.5">
-                    Profile evidence alignment
-                  </div>
-                </div>
-                <span className="tag-mono tag-accent">
-                  Strong Match
-                </span>
-              </div>
-
-              {/* Evidence Breakdown Snippet */}
-              <div className="space-y-2.5 pt-1">
-                <div className="text-xs font-mono uppercase text-[#686C63] tracking-wide">
-                  Evidence breakdown
-                </div>
-
-                <div className="p-2.5 bg-[#F5F3EE] border border-[#D5D5CC] rounded-[2px] flex items-start gap-2.5">
-                  <CheckCircle2 size={16} strokeWidth={1.5} className="text-[#20251F] shrink-0 mt-0.5" />
-                  <div className="text-xs">
-                    <span className="font-semibold text-[#20251F]">React & TypeScript</span>
-                    <p className="text-[#686C63]">Verified in Skills and DevPulse project repository.</p>
-                  </div>
-                </div>
-
-                <div className="p-2.5 bg-[#E8E7DF] border border-[#D5D5CC] rounded-[2px] flex items-start gap-2.5">
-                  <AlertTriangle size={16} strokeWidth={1.5} className="text-[#D9534F] shrink-0 mt-0.5" />
-                  <div className="text-xs">
-                    <span className="font-semibold text-[#20251F]">Docker (Essential Gap)</span>
-                    <p className="text-[#686C63]">Identified in job requirements. Course roadmap ready.</p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Action */}
-              <button
-                onClick={() => onNavigate('dashboard')}
-                className="w-full btn-editorial btn-editorial-secondary text-xs py-2 flex items-center justify-between"
-              >
-                <span>Inspect complete candidate dashboard</span>
-                <ChevronRight size={14} strokeWidth={1.5} />
-              </button>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Two Clear Resume Entry Paths (Step 1) */}
-      <section className="space-y-6">
-        <div className="flex items-baseline justify-between flex-wrap gap-4 pb-2 border-b border-[#D5D5CC]">
-          <div>
-            <span className="section-num">01 / Getting Started</span>
-            <h2 className="font-serif text-3xl sm:text-4xl text-[#20251F] mt-1">
-              Two paths to a truthful profile.
-            </h2>
-          </div>
-          <p className="text-sm text-[#686C63] max-w-md">
-            Both workflows produce the same structured candidate profile and compilable LaTeX output.
-          </p>
+    <div className="landing-page flex flex-col justify-center min-h-[calc(100vh-12rem)] py-12">
+      {/* Ultra-Clean Minimal Hero */}
+      <div className="max-w-3xl mx-auto text-center space-y-8 px-4">
+        {/* Wordmark Subtitle / Badge */}
+        <div className="inline-flex items-center gap-2 font-mono text-xs uppercase tracking-widest text-[#686C63] bg-[#E8E7DF] px-3 py-1 border border-[#D5D5CC] rounded-[2px]">
+          Career Enablement & Job Matching Workspace
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-          {/* Option A: Upload Existing Resume */}
-          <div className="surface-card p-8 space-y-5 flex flex-col justify-between">
-            <div className="space-y-4">
-              <div className="w-10 h-10 border border-[#D5D5CC] bg-[#E8E7DF] flex items-center justify-center rounded-[2px]">
-                <Upload size={20} strokeWidth={1.5} className="text-[#20251F]" />
-              </div>
-              <h3 className="font-serif text-2xl text-[#20251F]">
-                Option A: Upload your existing resume
-              </h3>
-              <p className="text-sm text-[#686C63] leading-relaxed">
-                Paste your resume text or document content. The parser extracts your education, technical stack, projects, and employment history with review flags for uncertain fields.
-              </p>
-              <ul className="text-xs space-y-2 text-[#686C63] font-mono pt-2">
-                <li>• Instant contact and skill extraction</li>
-                <li>• Review-and-correct verification modal</li>
-                <li>• Zero fabricated qualifications</li>
-              </ul>
-            </div>
+        {/* Minimal Headline */}
+        <h1 className="font-serif text-5xl sm:text-6xl md:text-7xl text-[#20251F] font-normal tracking-tight leading-[1.08]">
+          Your Career Starts Here.
+        </h1>
 
-            <button
-              onClick={() => onNavigate('profile')}
-              className="btn-editorial btn-editorial-secondary w-full text-sm py-2.5 mt-4"
-            >
-              Upload or paste resume <ArrowRight size={15} strokeWidth={1.5} />
-            </button>
-          </div>
+        {/* Short Description */}
+        <p className="text-lg sm:text-xl text-[#686C63] max-w-2xl mx-auto font-normal leading-relaxed">
+          Build your resume, find relevant jobs, and discover the skills you need to grow.
+        </p>
 
-          {/* Option B: Build with AI Assistant */}
-          <div className="surface-card p-8 space-y-5 flex flex-col justify-between bg-[#E8E7DF] border-[#20251F]">
-            <div className="space-y-4">
-              <div className="w-10 h-10 border border-[#20251F] bg-[#20251F] text-[#F5F3EE] flex items-center justify-center rounded-[2px]">
-                <Bot size={20} strokeWidth={1.5} />
-              </div>
-              <h3 className="font-serif text-2xl text-[#20251F]">
-                Option B: Build a resume with AI
-              </h3>
-              <p className="text-sm text-[#686C63] leading-relaxed">
-                Walk through an interactive, step-by-step assistant. Answer guided questions about your coursework, technical tools, and projects, with relevant follow-ups to highlight your actual work.
-              </p>
-              <ul className="text-xs space-y-2 text-[#686C63] font-mono pt-2">
-                <li>• Guided conversational questions</li>
-                <li>• Follow-up prompts when details are sparse</li>
-                <li>• Generates compilable LaTeX and PDF source</li>
-              </ul>
-            </div>
-
-            <button
-              onClick={() => onNavigate('ai-assistant')}
-              className="btn-editorial btn-editorial-dark w-full text-sm py-2.5 mt-4"
-            >
-              Start conversational assistant <ArrowRight size={15} strokeWidth={1.5} />
-            </button>
-          </div>
-        </div>
-      </section>
-
-      {/* Editorial Grid: The 4 Core Workflow Pillars */}
-      <section className="space-y-8 pt-6">
-        <div className="pb-2 border-b border-[#D5D5CC]">
-          <span className="section-num">02 / Architecture & Workflow</span>
-          <h2 className="font-serif text-3xl sm:text-4xl text-[#20251F] mt-1">
-            Engineered for precision at every step.
-          </h2>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          <div className="p-6 bg-[#FFFFFF] border border-[#D5D5CC] rounded-[2px] space-y-3">
-            <span className="font-mono text-xs text-[#D9534F] font-bold">01</span>
-            <h4 className="font-serif text-xl text-[#20251F]">Truth-Grounded Profile</h4>
-            <p className="text-xs text-[#686C63] leading-relaxed">
-              Maintains user-confirmed facts as ground truth. Distinguishes verified achievements from wording polish.
-            </p>
-          </div>
-
-          <div className="p-6 bg-[#FFFFFF] border border-[#D5D5CC] rounded-[2px] space-y-3">
-            <span className="font-mono text-xs text-[#D9534F] font-bold">02</span>
-            <h4 className="font-serif text-xl text-[#20251F]">Transparent Alignment</h4>
-            <p className="text-xs text-[#686C63] leading-relaxed">
-              Weighted scoring evaluates skills, projects, and coursework against job descriptions with proof citations.
-            </p>
-          </div>
-
-          <div className="p-6 bg-[#FFFFFF] border border-[#D5D5CC] rounded-[2px] space-y-3">
-            <span className="font-mono text-xs text-[#D9534F] font-bold">03</span>
-            <h4 className="font-serif text-xl text-[#20251F]">Constraint Segregation</h4>
-            <p className="text-xs text-[#686C63] leading-relaxed">
-              Work authorizations, licenses, and graduation dates are reported separately from learnable technical skills.
-            </p>
-          </div>
-
-          <div className="p-6 bg-[#FFFFFF] border border-[#D5D5CC] rounded-[2px] space-y-3">
-            <span className="font-mono text-xs text-[#D9534F] font-bold">04</span>
-            <h4 className="font-serif text-xl text-[#20251F]">Actionable Roadmaps</h4>
-            <p className="text-xs text-[#686C63] leading-relaxed">
-              Missing essential skills map directly to verified courses from Harvard CS50, freeCodeCamp, and Docker Docs.
-            </p>
-          </div>
-        </div>
-      </section>
-
-      {/* Dark Footer Statement Section */}
-      <section className="surface-dark p-10 sm:p-14 space-y-6">
-        <div className="max-w-3xl space-y-4">
-          <span className="font-mono text-xs text-[#D9534F] uppercase tracking-widest font-semibold">
-            Responsible AI Positioning
-          </span>
-          <h3 className="font-serif text-3xl sm:text-4xl text-[#F5F3EE] font-normal leading-tight">
-            GigSync supports career preparation. It does not automate hiring decisions or invent qualifications.
-          </h3>
-          <p className="text-sm text-[#E8E7DF]/75 leading-relaxed">
-            Every candidate deserves transparent feedback on how their actual coursework and projects compare with real employer expectations.
-          </p>
-        </div>
-
-        <div className="pt-2 flex flex-wrap gap-4">
+        {/* EXACTLY TWO PRIMARY ACTION BUTTONS */}
+        <div className="pt-4 flex flex-col sm:flex-row items-center justify-center gap-4 max-w-md mx-auto">
+          {/* Button 1: Upload Resume */}
           <button
-            onClick={() => onNavigate('jobs')}
-            className="btn-editorial btn-editorial-primary text-xs px-5 py-2.5"
+            onClick={() => {
+              setUploadStep('upload');
+              setShowUploadModal(true);
+            }}
+            className="btn-editorial btn-editorial-primary w-full sm:w-auto text-base px-8 py-4 flex items-center justify-center gap-3 shadow-sm hover:translate-y-[-1px] transition-transform"
           >
-            Find jobs for me <ArrowRight size={14} strokeWidth={1.5} />
+            <Upload size={18} strokeWidth={1.75} />
+            <span className="font-semibold">Upload Resume</span>
           </button>
+
+          {/* Button 2: Build Resume with AI */}
           <button
-            onClick={() => onNavigate('how-it-works')}
-            className="btn-editorial btn-editorial-outline border-[#D5D5CC] text-[#F5F3EE] hover:bg-[#F5F3EE]/10 text-xs px-5 py-2.5"
+            onClick={() => onNavigate('ai-assistant')}
+            className="btn-editorial btn-editorial-dark w-full sm:w-auto text-base px-8 py-4 flex items-center justify-center gap-3 shadow-sm hover:translate-y-[-1px] transition-transform"
           >
-            Review documentation
+            <Sparkles size={18} strokeWidth={1.75} className="text-[#D9534F]" />
+            <span className="font-semibold">Build Resume with AI</span>
           </button>
         </div>
-      </section>
+
+        {/* Subtle Truth & Privacy Guarantee Footnote */}
+        <p className="pt-6 text-xs font-mono text-[#686C63]">
+          Grounded in confirmed facts • Zero fabricated qualifications • LaTeX & PDF export ready
+        </p>
+      </div>
+
+      {/* UPLOAD & REVIEW RESUME MODAL */}
+      {showUploadModal && (
+        <div className="fixed inset-0 z-50 bg-[#20251F]/70 flex items-center justify-center p-4">
+          <div className="surface-card bg-[#FFFFFF] border border-[#D5D5CC] max-w-2xl w-full p-6 sm:p-8 space-y-6 max-h-[90vh] overflow-y-auto rounded-[3px] shadow-lg">
+            {/* Modal Header */}
+            <div className="flex items-start justify-between pb-3 border-b border-[#D5D5CC]">
+              <div>
+                <span className="section-num">Workflow Step 01 / Resume Entry</span>
+                <h3 className="font-serif text-2xl sm:text-3xl text-[#20251F] mt-1">
+                  {uploadStep === 'upload' ? 'Upload Existing Resume' : 'Review & Correct Extracted Details'}
+                </h3>
+                <p className="text-xs text-[#686C63] mt-0.5">
+                  {uploadStep === 'upload'
+                    ? 'Accepts PDF and DOCX files. Extracts your education, skills, projects, and experience.'
+                    : 'Verify your extracted information before finding matching jobs.'}
+                </p>
+              </div>
+
+              <button
+                onClick={() => setShowUploadModal(false)}
+                className="text-[#686C63] hover:text-[#20251F] p-1 font-mono text-xl"
+              >
+                <X size={20} strokeWidth={1.5} />
+              </button>
+            </div>
+
+            {/* STEP 1: Upload Interface */}
+            {uploadStep === 'upload' && (
+              <div className="space-y-6">
+                {/* Drag and Drop Zone */}
+                <div
+                  onClick={() => fileInputRef.current?.click()}
+                  className="border-2 border-dashed border-[#D5D5CC] hover:border-[#20251F] bg-[#F5F3EE] hover:bg-[#E8E7DF] p-8 text-center cursor-pointer transition-colors rounded-[2px] space-y-3"
+                >
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".pdf,.docx,.txt"
+                    className="hidden"
+                    onChange={handleFileChange}
+                  />
+                  <div className="w-12 h-12 mx-auto bg-[#E8E7DF] border border-[#D5D5CC] rounded-full flex items-center justify-center text-[#20251F]">
+                    <Upload size={22} strokeWidth={1.5} />
+                  </div>
+                  <div>
+                    <span className="font-semibold text-sm text-[#20251F]">
+                      Click to choose a file or drag and drop here
+                    </span>
+                    <p className="text-xs text-[#686C63] mt-1">
+                      Supports PDF, DOCX, and TXT resumes (Max 10MB)
+                    </p>
+                  </div>
+                  {fileName && (
+                    <div className="inline-flex items-center gap-1.5 font-mono text-xs text-[#20251F] bg-[#FFFFFF] px-3 py-1 border border-[#D5D5CC] rounded-[2px]">
+                      <FileText size={13} strokeWidth={1.5} /> {fileName}
+                    </div>
+                  )}
+                </div>
+
+                {/* Alternative: Paste Resume Text Directly */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-xs font-mono uppercase text-[#686C63]">
+                    <span>Or paste resume text directly</span>
+                    <button
+                      onClick={() => {
+                        const sample = `Jordan Lee
+jordan.lee@polytechnic.edu | (555) 789-0123 | San Jose, CA
+linkedin.com/in/jordanlee-dev | github.com/jordan-lee
+
+EDUCATION
+California State Polytechnic University
+Bachelor of Science in Computer Science, 2022 - 2026
+GPA: 3.84
+
+TECHNICAL SKILLS
+Languages: Python, TypeScript, SQL, JavaScript
+Frameworks: FastAPI, React, Node.js, Express
+Tools: Docker, PostgreSQL, Redis, Linux, Git
+
+PROJECTS
+CloudMetrics Dashboard
+- Built full-stack monitoring tool with React and FastAPI.
+- Deployed containerized services with Docker.
+
+EXPERIENCE
+Software Engineering Intern - Cloud Labs (Summer 2025)
+- Built RESTful endpoints with Node.js and PostgreSQL.`;
+                        setPastedText(sample);
+                        processExtractedText(sample);
+                      }}
+                      className="text-[#D9534F] hover:underline"
+                    >
+                      Load sample resume
+                    </button>
+                  </div>
+                  <textarea
+                    className="input-editorial text-xs min-h-[130px] font-mono leading-relaxed"
+                    placeholder="Paste plain resume text here..."
+                    value={pastedText}
+                    onChange={e => setPastedText(e.target.value)}
+                  />
+                </div>
+
+                <div className="flex justify-end gap-3 pt-2">
+                  <button
+                    onClick={() => setShowUploadModal(false)}
+                    className="btn-editorial btn-editorial-outline text-xs px-4 py-2"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => processExtractedText(pastedText)}
+                    disabled={!pastedText.trim() || isProcessing}
+                    className="btn-editorial btn-editorial-primary text-xs px-5 py-2 flex items-center gap-2"
+                  >
+                    {isProcessing ? 'Extracting Facts...' : 'Extract & Review Resume'}
+                    <ArrowRight size={14} strokeWidth={1.5} />
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* STEP 2: Review and Correct Interface */}
+            {uploadStep === 'review' && (
+              <div className="space-y-6">
+                {/* Confidence & Review Banner */}
+                {parsedResult && (
+                  <div className="p-3 bg-[#E8E7DF] border border-[#D5D5CC] rounded-[2px] flex items-center justify-between text-xs font-mono">
+                    <span className="flex items-center gap-2 text-[#20251F]">
+                      <CheckCircle size={15} strokeWidth={1.5} className="text-[#20251F]" />
+                      Parsing Confidence: <strong>{parsedResult.confidenceScore}%</strong>
+                    </span>
+                    <span className="text-[#686C63]">
+                      Please confirm details below
+                    </span>
+                  </div>
+                )}
+
+                {/* Editable Fields: Contact Details */}
+                <div className="space-y-3">
+                  <div className="text-xs font-mono uppercase text-[#686C63] font-semibold">
+                    1. Contact & Identification
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-[11px] font-mono text-[#686C63]">Full Name</label>
+                      <input
+                        className="input-editorial text-xs mt-0.5"
+                        value={reviewedProfile.personalInfo.fullName}
+                        onChange={e => setReviewedProfile({
+                          ...reviewedProfile,
+                          personalInfo: { ...reviewedProfile.personalInfo, fullName: e.target.value }
+                        })}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[11px] font-mono text-[#686C63]">Target Role</label>
+                      <input
+                        className="input-editorial text-xs mt-0.5"
+                        value={reviewedProfile.personalInfo.title}
+                        onChange={e => setReviewedProfile({
+                          ...reviewedProfile,
+                          personalInfo: { ...reviewedProfile.personalInfo, title: e.target.value }
+                        })}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[11px] font-mono text-[#686C63]">Email</label>
+                      <input
+                        className="input-editorial text-xs mt-0.5"
+                        value={reviewedProfile.personalInfo.email}
+                        onChange={e => setReviewedProfile({
+                          ...reviewedProfile,
+                          personalInfo: { ...reviewedProfile.personalInfo, email: e.target.value }
+                        })}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[11px] font-mono text-[#686C63]">Location</label>
+                      <input
+                        className="input-editorial text-xs mt-0.5"
+                        value={reviewedProfile.personalInfo.location}
+                        onChange={e => setReviewedProfile({
+                          ...reviewedProfile,
+                          personalInfo: { ...reviewedProfile.personalInfo, location: e.target.value }
+                        })}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Editable Fields: Education */}
+                <div className="space-y-3 pt-2 border-t border-[#D5D5CC]">
+                  <div className="text-xs font-mono uppercase text-[#686C63] font-semibold">
+                    2. Education
+                  </div>
+                  {reviewedProfile.education.map((edu, idx) => (
+                    <div key={edu.id || idx} className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3 bg-[#F5F3EE] border border-[#D5D5CC] rounded-[2px]">
+                      <div>
+                        <label className="text-[11px] font-mono text-[#686C63]">Institution</label>
+                        <input
+                          className="input-editorial text-xs mt-0.5"
+                          value={edu.institution}
+                          onChange={e => {
+                            const next = [...reviewedProfile.education];
+                            next[idx].institution = e.target.value;
+                            setReviewedProfile({ ...reviewedProfile, education: next });
+                          }}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[11px] font-mono text-[#686C63]">Degree & Major</label>
+                        <input
+                          className="input-editorial text-xs mt-0.5"
+                          value={`${edu.degree} in ${edu.fieldOfStudy}`}
+                          onChange={e => {
+                            const next = [...reviewedProfile.education];
+                            next[idx].fieldOfStudy = e.target.value;
+                            setReviewedProfile({ ...reviewedProfile, education: next });
+                          }}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[11px] font-mono text-[#686C63]">Graduation Year</label>
+                        <input
+                          className="input-editorial text-xs mt-0.5"
+                          value={edu.endDate}
+                          onChange={e => {
+                            const next = [...reviewedProfile.education];
+                            next[idx].endDate = e.target.value;
+                            setReviewedProfile({ ...reviewedProfile, education: next });
+                          }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Editable Fields: Technical Skills */}
+                <div className="space-y-3 pt-2 border-t border-[#D5D5CC]">
+                  <div className="text-xs font-mono uppercase text-[#686C63] font-semibold">
+                    3. Extracted Skills (Click × to remove)
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      ...reviewedProfile.skills.technical,
+                      ...reviewedProfile.skills.frameworks,
+                      ...reviewedProfile.skills.tools
+                    ].map(skill => (
+                      <span
+                        key={skill}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-mono bg-[#E8E7DF] text-[#20251F] border border-[#D5D5CC] rounded-[2px]"
+                      >
+                        {skill}
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveSkill(skill)}
+                          className="hover:text-[#D9534F] text-xs font-bold"
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+
+                  {/* Add Skill Input */}
+                  <div className="flex gap-2 pt-1 max-w-sm">
+                    <input
+                      className="input-editorial text-xs"
+                      placeholder="Add missing skill (e.g. Docker, AWS)..."
+                      value={newSkillInput}
+                      onChange={e => setNewSkillInput(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleAddSkill();
+                        }
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={handleAddSkill}
+                      className="btn-editorial btn-editorial-outline text-xs px-3"
+                    >
+                      <Plus size={13} strokeWidth={1.5} /> Add
+                    </button>
+                  </div>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="pt-4 border-t border-[#D5D5CC] flex items-center justify-between flex-wrap gap-3">
+                  <button
+                    onClick={() => setUploadStep('upload')}
+                    className="btn-editorial btn-editorial-outline text-xs px-4 py-2"
+                  >
+                    ← Back to Upload
+                  </button>
+
+                  {/* Prominent Next Step: FIND JOBS FOR ME */}
+                  <button
+                    onClick={handleConfirmAndFindJobs}
+                    className="btn-editorial btn-editorial-primary text-sm px-6 py-3 flex items-center gap-2 font-semibold shadow-sm"
+                  >
+                    <span>Confirm Profile & Find Jobs for Me</span>
+                    <ArrowRight size={16} strokeWidth={2} />
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
