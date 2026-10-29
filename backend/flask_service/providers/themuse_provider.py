@@ -73,9 +73,24 @@ class TheMuseProvider(BaseJobProvider):
 
         if location and location.strip():
             loc_clean = location.strip()
-            # If user explicitly specified Remote, set location filter or handle post-filter
-            if loc_clean.lower() in ["remote", "flexible", "work from home"]:
+            loc_lower = loc_clean.lower()
+            # If user explicitly specified Remote, set location filter
+            if loc_lower in ["remote", "flexible", "work from home"]:
                 params["location"] = "Flexible / Remote"
+            elif "bengaluru" in loc_lower or "bangalore" in loc_lower:
+                params["location"] = "Bangalore, India"
+            elif "mumbai" in loc_lower:
+                params["location"] = "Mumbai, India"
+            elif "gurgaon" in loc_lower or "gurugram" in loc_lower or "delhi" in loc_lower:
+                params["location"] = "Gurgaon, India"
+            elif "hyderabad" in loc_lower:
+                params["location"] = "Hyderabad, India"
+            elif "chennai" in loc_lower:
+                params["location"] = "Chennai, India"
+            elif "san jose" in loc_lower:
+                params["location"] = "San Jose, CA"
+            elif "san francisco" in loc_lower:
+                params["location"] = "San Francisco, CA"
             else:
                 params["location"] = loc_clean
 
@@ -129,8 +144,14 @@ class TheMuseProvider(BaseJobProvider):
                     req_loc = location.strip().lower()
                     if req_loc not in ["all", "any", "worldwide"]:
                         is_remote_search = req_loc in ["remote", "flexible / remote", "flexible", "wfh"]
-                        # Extract city / region tokens (e.g. 'San Jose, CA' -> ['san jose', 'ca'])
+                        # Extract city / region tokens
                         loc_tokens = [t.strip() for t in re.split(r'[\s,]+', req_loc) if len(t.strip()) > 2]
+                        # Account for Bengaluru/Bangalore alias
+                        if "bengaluru" in req_loc:
+                            loc_tokens.append("bangalore")
+                        if "bangalore" in req_loc:
+                            loc_tokens.append("bengaluru")
+
                         is_loc_match = any(t in loc_str.lower() for t in loc_tokens) or any(
                             any(t in l.lower() for t in loc_tokens) for l in locations_list
                         )
@@ -140,8 +161,9 @@ class TheMuseProvider(BaseJobProvider):
                             if not is_job_remote:
                                 continue
                         else:
-                            # User searched for a specific city/country (e.g. San Jose, CA or Bengaluru)
-                            if not (is_loc_match or is_job_remote):
+                            # User searched for a specific city/country (e.g. San Jose, CA or Bengaluru, India)
+                            if not is_loc_match:
+                                # When specific city or country requested, do not substitute unrelated locations
                                 continue
 
                 # Work mode detection

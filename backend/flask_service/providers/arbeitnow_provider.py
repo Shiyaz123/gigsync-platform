@@ -96,6 +96,12 @@ class ArbeitnowProvider(BaseJobProvider):
                     req_loc = location.strip().lower()
                     if req_loc not in ["all", "any", "worldwide"]:
                         is_remote_search = req_loc in ["remote", "flexible", "wfh"]
+                        # If candidate is searching in India or USA, Arbeitnow EU vacancies do not match
+                        is_india = any(k in req_loc for k in ["india", "bengaluru", "bangalore", "mumbai", "delhi", "hyderabad", "chennai", "pune"])
+                        is_usa = any(k in req_loc for k in ["usa", "united states", "san jose", "san francisco", "california", "new york", "texas", "seattle"])
+                        if (is_india or is_usa) and not is_remote_search:
+                            continue
+
                         loc_tokens = [t.strip() for t in re.split(r'[\s,]+', req_loc) if len(t.strip()) > 2]
                         matches_loc = any(t in loc_str.lower() for t in loc_tokens)
 
@@ -103,7 +109,7 @@ class ArbeitnowProvider(BaseJobProvider):
                             if not is_remote:
                                 continue
                         else:
-                            if not (matches_loc or is_remote):
+                            if not matches_loc:
                                 continue
 
                 # Work mode detection
