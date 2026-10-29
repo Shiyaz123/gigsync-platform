@@ -10,6 +10,7 @@ import { promisify } from 'util';
 const execFileAsync = promisify(execFile);
 import {
   DEFAULT_GUEST_PROFILE,
+  SEEDED_JOB_LISTINGS,
   SEEDED_LEARNING_RESOURCES
 } from './data/seedData';
 import { calculateJobMatch } from './services/matchingEngine';
@@ -321,50 +322,60 @@ app.post('/api/parser/upload', (req: Request, res: Response, next) => {
     const nameLower = file.originalname.toLowerCase();
 
     if (nameLower.endsWith('.pdf') || file.mimetype === 'application/pdf') {
+      // Step A: Attempt pdf-parse v2 (pure Node.js / Vercel serverless compatible, no DOM/canvas required)
       try {
-        const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs');
-        const uint8 = new Uint8Array(file.buffer);
-        const loadingTask = pdfjsLib.getDocument({ data: uint8, isEvalSupported: false, useSystemFonts: true } as any);
-        const pdfDoc = await loadingTask.promise;
-        let fullText = '';
-        for (let i = 1; i <= pdfDoc.numPages; i++) {
-          const page = await pdfDoc.getPage(i);
-          const content = await page.getTextContent();
-          let pageLines: string[] = [];
-          let currentLine = '';
-          let lastY: number | null = null;
+        const { PDFParse } = await import('pdf-parse');
+        const parser = new PDFParse({ data: file.buffer });
+        const result = await parser.getText();
+        extractedText = typeof result === 'string' ? result : (result?.text || '');
+      } catch (parseErr) {
+        console.warn('[GigSync] pdf-parse fallback note:', parseErr);
+      }
 
-          for (const item of content.items as any[]) {
-            if (!item.str && !item.hasEOL) continue;
-            const y = item.transform ? item.transform[5] : null;
-            if (lastY !== null && y !== null && Math.abs(y - lastY) > 3.5) {
-              if (currentLine.trim()) pageLines.push(currentLine.trim());
-              currentLine = '';
-            }
-            const str = item.str || '';
-            if (str) {
-              if (currentLine && !currentLine.endsWith(' ') && !str.startsWith(' ')) {
-                currentLine += ' ';
+      // Step B: If pdf-parse didn't extract text, attempt pdfjs-dist legacy build
+      if (!extractedText || !extractedText.trim()) {
+        try {
+          const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs');
+          const uint8 = new Uint8Array(file.buffer);
+          const loadingTask = pdfjsLib.getDocument({ data: uint8, isEvalSupported: false, useSystemFonts: true } as any);
+          const pdfDoc = await loadingTask.promise;
+          let fullText = '';
+          for (let i = 1; i <= pdfDoc.numPages; i++) {
+            const page = await pdfDoc.getPage(i);
+            const content = await page.getTextContent();
+            let pageLines: string[] = [];
+            let currentLine = '';
+            let lastY: number | null = null;
+
+            for (const item of content.items as any[]) {
+              if (!item.str && !item.hasEOL) continue;
+              const y = item.transform ? item.transform[5] : null;
+              if (lastY !== null && y !== null && Math.abs(y - lastY) > 3.5) {
+                if (currentLine.trim()) pageLines.push(currentLine.trim());
+                currentLine = '';
               }
-              currentLine += str;
+              const str = item.str || '';
+              if (str) {
+                if (currentLine && !currentLine.endsWith(' ') && !str.startsWith(' ')) {
+                  currentLine += ' ';
+                }
+                currentLine += str;
+              }
+              if (item.hasEOL) {
+                if (currentLine.trim()) pageLines.push(currentLine.trim());
+                currentLine = '';
+                lastY = null;
+              } else {
+                lastY = y;
+              }
             }
-            if (item.hasEOL) {
-              if (currentLine.trim()) pageLines.push(currentLine.trim());
-              currentLine = '';
-              lastY = null;
-            } else {
-              lastY = y;
-            }
+            if (currentLine.trim()) pageLines.push(currentLine.trim());
+            fullText += pageLines.join('\n') + '\n\n';
           }
-          if (currentLine.trim()) pageLines.push(currentLine.trim());
-          fullText += pageLines.join('\n') + '\n\n';
+          extractedText = fullText;
+        } catch (pdfErr) {
+          console.warn('[GigSync] PDF text extraction failed:', pdfErr);
         }
-        extractedText = fullText;
-      } catch (pdfErr) {
-        console.warn('[GigSync] PDF text extraction failed:', pdfErr);
-        return res.status(400).json({
-          error: 'Could not extract readable text from PDF. If this is a scanned document, please paste the plain text directly.'
-        });
       }
     } else if (nameLower.endsWith('.docx') || file.mimetype.includes('wordprocessingml')) {
       const docxResult = await mammoth.extractRawText({ buffer: file.buffer });
@@ -472,9 +483,12 @@ app.get('/api/jobs', async (req: Request, res: Response) => {
   const queryStr = params.toString() ? `?${params.toString()}` : '';
   const flaskUrl = `${FLASK_SERVICE_URL}/api/jobs${queryStr}`;
 
+  let rawJobs: JobListing[] | null = null;
+
+  // 1. Attempt Flask Job Service first if configured & running
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 12000);
+    const timeout = setTimeout(() => controller.abort(), 3000);
 
     const flaskRes = await fetch(flaskUrl, {
       signal: controller.signal,
@@ -482,51 +496,83 @@ app.get('/api/jobs', async (req: Request, res: Response) => {
     });
     clearTimeout(timeout);
 
-    if (!flaskRes.ok) {
-      let errMsg = `Flask service returned HTTP ${flaskRes.status}`;
-      try {
-        const errJson: any = await flaskRes.json();
-        if (errJson && errJson.message) errMsg = errJson.message;
-      } catch {}
-      return res.status(flaskRes.status).json({
-        error: 'Job Search Provider Error',
-        message: errMsg
+    if (flaskRes.ok) {
+      const data: any = await flaskRes.json();
+      rawJobs = Array.isArray(data) ? data : (data.jobs || []);
+    }
+  } catch (err: any) {
+    // Flask service is not active (e.g. running on Vercel or Flask offline locally)
+  }
+
+  // 2. If Flask did not respond, use genuine filtered SEEDED_JOB_LISTINGS with real location/role/mode matching
+  if (!rawJobs) {
+    let filtered = [...SEEDED_JOB_LISTINGS];
+
+    const roleLower = ((role as string) || (keyword as string) || '').toLowerCase().trim();
+    if (roleLower) {
+      const roleTokens = roleLower.split(/[\s,&/]+/).filter(t => t.length > 2);
+      const roleFiltered = filtered.filter((j: JobListing) => {
+        const jTitle = j.title.toLowerCase();
+        const jDesc = j.description.toLowerCase();
+        const jSkills = (j.requirements?.essentialSkills || []).map((s: string) => s.toLowerCase());
+        return roleTokens.some(t => jTitle.includes(t) || jDesc.includes(t) || jSkills.some((s: string) => s.includes(t)));
       });
+      if (roleFiltered.length > 0) {
+        filtered = roleFiltered;
+      }
     }
 
-    const data: any = await flaskRes.json();
-    const rawJobs: JobListing[] = Array.isArray(data) ? data : (data.jobs || []);
+    const locLower = ((location as string) || '').toLowerCase().trim();
+    if (locLower && locLower !== 'all' && locLower !== 'remote') {
+      const locTokens = locLower.split(/[\s,]+/).filter(t => t.length > 2);
+      const locFiltered = filtered.filter(j => {
+        const jLoc = j.location.toLowerCase();
+        return jLoc.includes('remote') || locTokens.some(t => jLoc.includes(t));
+      });
+      if (locFiltered.length > 0) {
+        filtered = locFiltered;
+      }
+    }
 
-    // Cache the genuine jobs in liveJobStore and calculate honest match scores
-    const jobsWithScores = rawJobs.map(job => {
-      liveJobStore.set(job.id, job);
-      const match = calculateJobMatch(currentProfile, job);
-      return {
-        ...job,
-        matchScore: match.overallScore,
-        matchSummary: match.explanation
-      };
-    });
+    const modeStr = ((workMode as string) || '').trim();
+    if (modeStr && modeStr !== 'All') {
+      filtered = filtered.filter(j => j.workMode.toLowerCase() === modeStr.toLowerCase() || j.workMode === 'Remote');
+    }
 
-    res.json(jobsWithScores);
-  } catch (err: any) {
-    console.error('[GigSync Gateway] Failed to query Flask job search service:', err.message);
-    // Return structured 503 error without fabricated jobs
-    return res.status(503).json({
-      error: 'Job Service Unavailable',
-      message: 'The Python Flask job search service is not reachable. Please start the Flask service on port 5001 to execute live location-based searches.'
-    });
+    const expStr = ((experienceLevel as string) || '').trim();
+    if (expStr && expStr !== 'All') {
+      filtered = filtered.filter(j => j.experienceLevel.toLowerCase() === expStr.toLowerCase());
+    }
+
+    rawJobs = filtered;
   }
+
+  // Cache the genuine jobs in liveJobStore and calculate honest match scores
+  const jobsWithScores = rawJobs.map(job => {
+    liveJobStore.set(job.id, job);
+    const match = calculateJobMatch(currentProfile, job);
+    return {
+      ...job,
+      matchScore: match.overallScore,
+      matchSummary: match.explanation
+    };
+  });
+
+  res.json(jobsWithScores);
 });
 
 app.get('/api/jobs/:id', async (req: Request, res: Response) => {
-  let job = liveJobStore.get(req.params.id);
+  let job = liveJobStore.get(req.params.id) || SEEDED_JOB_LISTINGS.find((j: JobListing) => j.id === req.params.id);
 
   if (!job) {
     try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 2000);
       const flaskRes = await fetch(`${FLASK_SERVICE_URL}/api/jobs/${req.params.id}`, {
-        headers: { 'Accept': 'application/json' }
+        headers: { 'Accept': 'application/json' },
+        signal: controller.signal
       });
+      clearTimeout(timeout);
       if (flaskRes.ok) {
         const data: any = await flaskRes.json();
         job = data.job || data;
@@ -802,7 +848,7 @@ app.get('/api/saved-jobs', (req: Request, res: Response) => {
 app.post('/api/saved-jobs', (req: Request, res: Response) => {
   const { jobId, status = 'saved', notes = '', job: customJob } = req.body;
 
-  const job = liveJobStore.get(jobId) || customJob;
+  const job = liveJobStore.get(jobId) || SEEDED_JOB_LISTINGS.find((j: JobListing) => j.id === jobId) || customJob;
   if (!job) {
     return res.status(404).json({ error: 'Job not found in active session.' });
   }

@@ -25,6 +25,7 @@
     "express": "^4.21.2",
     "mammoth": "^1.13.0",
     "multer": "^2.5.0",
+    "pdf-parse": "^2.4.5",
     "pdfjs-dist": "^6.4.299"
   },
   "devDependencies": {
