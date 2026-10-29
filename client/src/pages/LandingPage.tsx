@@ -418,33 +418,109 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             {/* STEP 2: Review and Correct Interface */}
             {uploadStep === 'review' && (
               <div className="space-y-6">
-                {/* Confidence & Re-upload Bar */}
-                <div className="p-3 bg-[#E8E7DF] border border-[#D5D5CC] rounded-[2px] flex items-center justify-between flex-wrap gap-2 text-xs font-mono">
-                  <span className="flex items-center gap-2 text-[#20251F]">
-                    <CheckCircle size={15} strokeWidth={1.5} className="text-[#20251F]" />
-                    <span>
-                      Confidence: <strong>{parsedResult?.confidenceScore ?? 0}%</strong>
+                {/* Confidence & Re-upload Bar with Evidence Breakdown */}
+                <div className="p-3.5 bg-[#E8E7DF] border border-[#D5D5CC] rounded-[2px] space-y-2.5 text-xs font-mono">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <span className="flex items-center gap-2 text-[#20251F]">
+                      <CheckCircle size={15} strokeWidth={1.5} className="text-[#20251F]" />
+                      <span>
+                        Extraction Evidence Score: <strong className="text-sm font-bold">{parsedResult?.confidenceScore ?? 0}%</strong>
+                      </span>
+                      {fileName && <span className="text-[#686C63]">({fileName})</span>}
                     </span>
-                    {fileName && <span className="text-[#686C63]">({fileName})</span>}
-                  </span>
 
-                  {/* Re-upload trigger */}
-                  <div className="flex items-center gap-2">
-                    <input
-                      ref={reuploadInputRef}
-                      type="file"
-                      accept=".pdf,.docx,.txt"
-                      className="hidden"
-                      onChange={handleFileChange}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => reuploadInputRef.current?.click()}
-                      className="text-xs text-[#20251F] hover:text-[#D9534F] flex items-center gap-1 font-semibold underline underline-offset-2"
-                    >
-                      <RefreshCw size={12} />
-                      Upload Different Resume
-                    </button>
+                    {/* Re-upload trigger */}
+                    <div className="flex items-center gap-2">
+                      <input
+                        ref={reuploadInputRef}
+                        type="file"
+                        accept=".pdf,.docx,.txt"
+                        className="hidden"
+                        onChange={handleFileChange}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => reuploadInputRef.current?.click()}
+                        className="text-xs text-[#20251F] hover:text-[#D9534F] flex items-center gap-1 font-semibold underline underline-offset-2"
+                      >
+                        <RefreshCw size={12} />
+                        Upload Different Resume
+                      </button>
+                    </div>
+                  </div>
+
+                  <p className="text-[11px] text-[#686C63] leading-relaxed">
+                    Score reflects verifiable field-level evidence detected in document (Name, Contact, Education, Skills, Projects). Does not reflect candidate qualification or job match score.
+                  </p>
+
+                  {/* Extraction Evidence Status Badges */}
+                  <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-[#D5D5CC]/60">
+                    <span className="text-[10px] uppercase tracking-wider text-[#686C63] mr-1">Evidence Status:</span>
+                    {reviewedProfile.personalInfo.fullName.trim() ? (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] bg-[#E3E8DC] text-[#2D4A22] border border-[#C6D4BB] rounded-[2px]">
+                        ✓ Name Detected
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] bg-[#FFF0EF] text-[#A82B24] border border-[#F3C2C0] rounded-[2px] font-semibold">
+                        ⚠ Name Required
+                      </span>
+                    )}
+
+                    {reviewedProfile.personalInfo.email.trim() ? (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] bg-[#E3E8DC] text-[#2D4A22] border border-[#C6D4BB] rounded-[2px]">
+                        ✓ Email Detected
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] bg-[#FFF0EF] text-[#A82B24] border border-[#F3C2C0] rounded-[2px]">
+                        ⚠ Email Missing
+                      </span>
+                    )}
+
+                    {reviewedProfile.personalInfo.phone.trim() ? (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] bg-[#E3E8DC] text-[#2D4A22] border border-[#C6D4BB] rounded-[2px]">
+                        ✓ Phone Detected
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] bg-[#FFF8E6] text-[#785E07] border border-[#E8D6A4] rounded-[2px]">
+                        ⚠ Phone Unspecified
+                      </span>
+                    )}
+
+                    {reviewedProfile.personalInfo.location.trim() ? (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] bg-[#E3E8DC] text-[#2D4A22] border border-[#C6D4BB] rounded-[2px]">
+                        ✓ Location Detected
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] bg-[#FFF8E6] text-[#785E07] border border-[#E8D6A4] rounded-[2px]">
+                        ⚠ Location Needed
+                      </span>
+                    )}
+
+                    {reviewedProfile.education.length > 0 ? (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] bg-[#E3E8DC] text-[#2D4A22] border border-[#C6D4BB] rounded-[2px]">
+                        ✓ Education ({reviewedProfile.education.length})
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] bg-[#FFF8E6] text-[#785E07] border border-[#E8D6A4] rounded-[2px]">
+                        ⚠ Education None
+                      </span>
+                    )}
+
+                    {[...reviewedProfile.skills.technical, ...reviewedProfile.skills.frameworks, ...reviewedProfile.skills.tools].length > 0 ? (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] bg-[#E3E8DC] text-[#2D4A22] border border-[#C6D4BB] rounded-[2px]">
+                        ✓ Skills ({[...reviewedProfile.skills.technical, ...reviewedProfile.skills.frameworks, ...reviewedProfile.skills.tools].length})
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] bg-[#FFF8E6] text-[#785E07] border border-[#E8D6A4] rounded-[2px]">
+                        ⚠ Skills None
+                      </span>
+                    )}
+
+                    {reviewedProfile.projects.length > 0 ? (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] bg-[#E3E8DC] text-[#2D4A22] border border-[#C6D4BB] rounded-[2px]">
+                        ✓ Projects ({reviewedProfile.projects.length})
+                      </span>
+                    ) : null}
                   </div>
                 </div>
 
@@ -475,13 +551,18 @@ export const LandingPage: React.FC<LandingPageProps> = ({
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
-                      <label className="text-[11px] font-mono text-[#686C63] block">
-                        Full Name <span className="text-[#D9534F]">*</span>
-                      </label>
+                      <div className="flex items-center justify-between">
+                        <label className="text-[11px] font-mono text-[#686C63]">
+                          Full Name <span className="text-[#D9534F]">*</span>
+                        </label>
+                        {!reviewedProfile.personalInfo.fullName.trim() && (
+                          <span className="text-[10px] text-[#D9534F] font-mono font-semibold">Confirmation Required</span>
+                        )}
+                      </div>
                       <input
                         id="input-full-name"
-                        className="input-editorial text-xs mt-0.5 w-full"
-                        placeholder="(Not detected — enter your full name)"
+                        className={`input-editorial text-xs mt-0.5 w-full ${!reviewedProfile.personalInfo.fullName.trim() ? 'border-[#D9534F] bg-[#FFF8F8]' : ''}`}
+                        placeholder="(Candidate full name required)"
                         value={reviewedProfile.personalInfo.fullName}
                         onChange={e => setReviewedProfile({
                           ...reviewedProfile,
@@ -490,11 +571,16 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                       />
                     </div>
                     <div>
-                      <label className="text-[11px] font-mono text-[#686C63] block">Target Role</label>
+                      <div className="flex items-center justify-between">
+                        <label className="text-[11px] font-mono text-[#686C63]">Target Role</label>
+                        {!reviewedProfile.personalInfo.title.trim() && (
+                          <span className="text-[10px] text-[#686C63] font-mono">Optional</span>
+                        )}
+                      </div>
                       <input
                         id="input-target-role"
                         className="input-editorial text-xs mt-0.5 w-full"
-                        placeholder="(Not detected — e.g. Junior Full-Stack Developer)"
+                        placeholder="(e.g. Junior Full-Stack Developer or Software Engineer)"
                         value={reviewedProfile.personalInfo.title}
                         onChange={e => setReviewedProfile({
                           ...reviewedProfile,
@@ -503,11 +589,16 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                       />
                     </div>
                     <div>
-                      <label className="text-[11px] font-mono text-[#686C63] block">Email Address</label>
+                      <div className="flex items-center justify-between">
+                        <label className="text-[11px] font-mono text-[#686C63]">Email Address</label>
+                        {!reviewedProfile.personalInfo.email.trim() && (
+                          <span className="text-[10px] text-[#785E07] font-mono">Review</span>
+                        )}
+                      </div>
                       <input
                         id="input-email"
                         className="input-editorial text-xs mt-0.5 w-full"
-                        placeholder="(Not detected — enter your email)"
+                        placeholder="(Candidate email address)"
                         value={reviewedProfile.personalInfo.email}
                         onChange={e => setReviewedProfile({
                           ...reviewedProfile,
@@ -516,11 +607,16 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                       />
                     </div>
                     <div>
-                      <label className="text-[11px] font-mono text-[#686C63] block">Location</label>
+                      <div className="flex items-center justify-between">
+                        <label className="text-[11px] font-mono text-[#686C63]">Location</label>
+                        {!reviewedProfile.personalInfo.location.trim() && (
+                          <span className="text-[10px] text-[#785E07] font-mono">Review</span>
+                        )}
+                      </div>
                       <input
                         id="input-location"
                         className="input-editorial text-xs mt-0.5 w-full"
-                        placeholder="(e.g. San Jose, CA or Remote)"
+                        placeholder="(e.g. Bangalore, Karnataka or San Jose, CA)"
                         value={reviewedProfile.personalInfo.location}
                         onChange={e => setReviewedProfile({
                           ...reviewedProfile,
@@ -529,11 +625,16 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                       />
                     </div>
                     <div>
-                      <label className="text-[11px] font-mono text-[#686C63] block">Phone Number</label>
+                      <div className="flex items-center justify-between">
+                        <label className="text-[11px] font-mono text-[#686C63]">Phone Number</label>
+                        {!reviewedProfile.personalInfo.phone.trim() && (
+                          <span className="text-[10px] text-[#785E07] font-mono">Review</span>
+                        )}
+                      </div>
                       <input
                         id="input-phone"
                         className="input-editorial text-xs mt-0.5 w-full"
-                        placeholder="(e.g. +1 555-0199)"
+                        placeholder="(e.g. +91 74114 78395 or +1 555-0199)"
                         value={reviewedProfile.personalInfo.phone}
                         onChange={e => setReviewedProfile({
                           ...reviewedProfile,

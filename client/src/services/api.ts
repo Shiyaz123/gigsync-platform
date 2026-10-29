@@ -145,8 +145,34 @@ export const api = {
             for (let i = 1; i <= pdfDoc.numPages; i++) {
               const page = await pdfDoc.getPage(i);
               const textContent = await page.getTextContent();
-              const pageText = textContent.items.map((item: any) => item.str || '').join(' ');
-              fullText += pageText + '\n';
+              let pageLines: string[] = [];
+              let currentLine = '';
+              let lastY: number | null = null;
+
+              for (const item of textContent.items as any[]) {
+                if (!item.str && !item.hasEOL) continue;
+                const y = item.transform ? item.transform[5] : null;
+                if (lastY !== null && y !== null && Math.abs(y - lastY) > 3.5) {
+                  if (currentLine.trim()) pageLines.push(currentLine.trim());
+                  currentLine = '';
+                }
+                const str = item.str || '';
+                if (str) {
+                  if (currentLine && !currentLine.endsWith(' ') && !str.startsWith(' ')) {
+                    currentLine += ' ';
+                  }
+                  currentLine += str;
+                }
+                if (item.hasEOL) {
+                  if (currentLine.trim()) pageLines.push(currentLine.trim());
+                  currentLine = '';
+                  lastY = null;
+                } else {
+                  lastY = y;
+                }
+              }
+              if (currentLine.trim()) pageLines.push(currentLine.trim());
+              fullText += pageLines.join('\n') + '\n\n';
             }
             extractedText = fullText;
           } catch (pdfErr: any) {
@@ -164,7 +190,7 @@ export const api = {
         throw new Error('Document contains no extractable text. If this is a scanned/image-only PDF, an OCR engine or backend multimodal extraction is required.');
       }
 
-      return parseResumeTextClient(extractedText);
+      return parseResumeTextClient(extractedText, file.name);
     }
   },
 

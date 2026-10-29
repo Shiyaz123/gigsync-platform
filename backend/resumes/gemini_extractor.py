@@ -1,7 +1,7 @@
 import os
 import re
 import json
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Tuple
 from pydantic import BaseModel, Field
 
 # Load optional .env if available
@@ -115,8 +115,7 @@ def extract_with_gemini(
 
     except Exception as e:
         err_msg = str(e)
-        # Log error securely without exposing keys
-        print(f"[GigSync Gemini] Extraction failed: {err_msg}")
+        print(f"[GigSync Gemini] Extraction failed: {err_msg}", file=sys.stderr)
         fallback_data = deterministic_python_fallback(text)
         return fallback_data, False, f"Gemini API call failed ({err_msg}). Used local parser."
 
@@ -142,31 +141,64 @@ def deterministic_python_fallback(text: str) -> Dict[str, Any]:
 
     lines = [line.strip() for line in text.split('\n') if line.strip()]
 
-    # 1. Contact Info
+    # 1. Contact Info - Email
     email_match = re.search(r'([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})', text)
     email = email_match.group(1).strip() if email_match else None
 
-    phone_match = re.search(r'(?:\+?1\s*(?:[.-]\s*)?)?(?:\(\s*([2-9]1[02-9]|[2-9][02-8]1|[2-9][02-8][02-9])\s*\)|([2-9]1[02-9]|[2-9][02-8]1|[2-9][02-8][02-9]))\s*(?:[.-]\s*)?([2-9]1[02-9]|[2-9][02-9]1|[2-9][02-9]{2})\s*(?:[.-]\s*)?([0-9]{4})', text)
-    phone = phone_match.group(0).strip() if phone_match else None
+    # Phone (International, Indian, US formats)
+    phone_candidates = re.findall(r'(?:\+?\d{1,3}[\s-]?)?\(?\d{2,5}\)?[\s.-]?\d{3,5}[\s.-]?\d{3,5}', text)
+    phone = None
+    for cand in phone_candidates:
+        digits = re.sub(r'\D', '', cand)
+        if 10 <= len(digits) <= 15:
+            phone = cand.strip()
+            break
 
-    # Full Name extraction (Guarded against %PDF, binary headers, keywords)
+    # Full Name extraction (Guarded against %PDF, binary headers, keywords, roles)
     full_name = None
-    for line in lines[:6]:
-        # STRICT GUARD: Never accept %PDF or binary headers
+    for line in lines[:5]:
         if re.search(r'%PDF|\.pdf|http|github\.com|linkedin\.com|@|obj|endobj|stream', line, re.I):
             continue
-        if re.search(r'^(resume|curriculum|vitae|cv|profile|contact|summary|objective|education)', line, re.I):
+        if re.search(r'^(resume|curriculum|vitae|cv|profile|contact|summary|objective|education|skills)', line, re.I):
+            continue
+        if re.search(r'[0-9:;!@#$%^*_+={}[\]|\\<>]', line):
+            continue
+        if re.search(r'\b(developer|engineer|student|intern|analyst|designer|specialist|consultant)\b', line, re.I):
             continue
         words = line.split()
-        if 2 <= len(words) <= 4 and all(re.match(r'^[A-Z][a-zA-Z.\'-]*$', w) or len(w) == 1 for w in words):
-            full_name = line.strip()
-            break
-        elif 2 <= len(words) <= 4 and not re.search(r'[0-9:;!@#$%^&*()_+={}[\]|\\<>]', line):
+        if 2 <= len(words) <= 4 and all(re.match(r'^[a-zA-Z][a-zA-Z.\'-]*$', w) for w in words):
             full_name = line.strip()
             break
 
-    # Location
+    # Target Role / Headline (Check lines 1..3 first, then standard roles)
+    target_role = None
+    for l in lines[1:min(4, len(lines))]:
+        if re.search(r'@|http|\+?\d', l):
+            continue
+        if re.search(r'\b(student|developer|engineer|intern|designer|architect|analyst|specialist|scientist)\b', l, re.I):
+            target_role = l.strip()
+            break
+
+    if not target_role:
+        roles = [
+            'Full-Stack Developer', 'Frontend Engineer', 'Frontend Developer',
+            'Backend Engineer', 'Backend Developer', 'Software Engineer', 'Software Developer',
+            'Machine Learning Engineer', 'AI Research Assistant', 'Data Scientist', 'Data Engineer',
+            'DevOps Engineer', 'Cloud Architect', 'Security Engineer', 'Robotics Systems Engineer',
+            'Systems Engineer', 'Mobile Developer', 'iOS Developer', 'Android Developer'
+        ]
+        for r in roles:
+            if re.search(rf'(^|[^a-zA-Z]){re.escape(r)}([^a-zA-Z]|$)', text[:1000], re.I):
+                target_role = r
+                break
+
+    # Location (Scan only header lines before summary/education to avoid prose false positives)
     location = None
+    INDIAN_STATES = [
+        'Karnataka', 'Maharashtra', 'Tamil Nadu', 'Telangana', 'Andhra Pradesh',
+        'Kerala', 'Delhi', 'Uttar Pradesh', 'Gujarat', 'West Bengal', 'Rajasthan',
+        'Punjab', 'Haryana', 'Madhya Pradesh', 'Bihar', 'Odisha', 'Assam'
+    ]
     US_STATES = {
         'AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'FL', 'GA',
         'HI', 'ID', 'IL', 'IN', 'IA', 'KS', 'KY', 'LA', 'ME', 'MD',
@@ -174,131 +206,168 @@ def deterministic_python_fallback(text: str) -> Dict[str, Any]:
         'NM', 'NY', 'NC', 'ND', 'OH', 'OK', 'OR', 'PA', 'RI', 'SC',
         'SD', 'TN', 'TX', 'UT', 'VT', 'VA', 'WA', 'WV', 'WI', 'WY', 'DC'
     }
-    loc_regex = re.compile(
-        r'(?:([A-Z][a-zA-Z\s.-]+),\s*([A-Z]{2}|[A-Z][a-zA-Z]+))|'
-        r'(San Francisco|San Jose|Palo Alto|Mountain View|Sunnyvale|Oakland|Berkeley|'
-        r'New York|Seattle|Austin|Boston|Chicago|Los Angeles|Ann Arbor|Detroit|Pittsburgh|'
-        r'London|Berlin|Toronto|Vancouver|Singapore|Bengaluru|Bangalore|Remote)',
-        re.I
-    )
-    for line in lines[:8]:
-        # Skip section header lines or skill lines
-        if re.search(r'^(skills|education|experience|projects|certifications|languages|courses)', line, re.I):
+
+    for line in lines[:6]:
+        if re.search(r'^(summary|professional summary|education|skills|projects|experience|about)\b', line, re.I):
+            break
+        if re.search(r'@|http|university|college|developer|student|engineer', line, re.I):
             continue
-        segments = re.split(r'[|•·\t]', line)
-        for seg in segments:
-            seg = seg.strip()
-            if '@' in seg or 'http' in seg or re.search(r'university|college|school|skills|python|sql|java|react', seg, re.I):
-                continue
-            m = loc_regex.search(seg)
+
+        # Check Indian City, State
+        for state in INDIAN_STATES:
+            m = re.search(rf'([a-zA-Z\s.-]+),\s*{state}\b', line, re.I)
             if m:
-                # If matched via City, State code
-                if m.group(1) and m.group(2):
-                    state_code = m.group(2).upper()
-                    city = m.group(1).strip()
-                    if len(state_code) == 2 and state_code not in US_STATES:
-                        continue
-                    if any(tech.lower() in city.lower() for tech in ['python', 'sql', 'react', 'node', 'java']):
-                        continue
-                    location = f"{city}, {state_code}"
-                    break
-                else:
-                    location = m.group(0).strip()
-                    break
+                location = f"{m.group(1).strip()}, {state}"
+                break
         if location:
             break
 
-    # Target Role / Title
-    target_role = None
-    roles = [
-        'Full-Stack Developer', 'Frontend Engineer', 'Frontend Developer',
-        'Backend Engineer', 'Backend Developer', 'Software Engineer', 'Software Developer',
-        'Machine Learning Engineer', 'AI Research Assistant', 'Data Scientist', 'Data Engineer',
-        'DevOps Engineer', 'Cloud Architect', 'Security Engineer', 'Robotics Systems Engineer',
-        'Systems Engineer', 'Mobile Developer', 'iOS Developer', 'Android Developer'
-    ]
-    for r in roles:
-        if re.search(rf'(^|[^a-zA-Z]){re.escape(r)}([^a-zA-Z]|$)', text[:1000], re.I):
-            target_role = r
+        # Check US City, ST
+        us_match = re.search(r'\b([A-Z][a-zA-Z\s.-]+),\s*([A-Z]{2})\b', line)
+        if us_match and us_match.group(2).upper() in US_STATES:
+            location = f"{us_match.group(1).strip()}, {us_match.group(2).upper()}"
             break
 
-    # 2. Skills
-    known_skills = [
-        'Python', 'JavaScript', 'TypeScript', 'Java', 'C++', 'C#', 'SQL', 'HTML5', 'HTML', 'CSS3', 'CSS',
-        'Go', 'Rust', 'Ruby', 'PHP', 'Swift', 'Kotlin', 'R', 'Scala', 'Dart', 'Bash', 'Shell',
-        'React', 'Node.js', 'Next.js', 'Express', 'FastAPI', 'Django', 'Flask', 'Spring Boot', 'Vue', 'Angular',
-        'PyTorch', 'TensorFlow', 'Keras', 'HuggingFace', 'FastAI', 'ROS', 'OpenCV', 'Tailwind CSS', 'Redux', 'GraphQL',
-        'Git', 'Docker', 'Kubernetes', 'PostgreSQL', 'MongoDB', 'MySQL', 'SQLite', 'Redis', 'AWS', 'GCP', 'Azure',
-        'Linux', 'CUDA', 'Webpack', 'Jest', 'CI/CD'
+        # Check major standalone metro cities
+        metro_match = re.search(r'\b(San Francisco|New York|Seattle|Austin|Boston|Chicago|Los Angeles|Bengaluru|Bangalore|Hyderabad|Mumbai|Delhi|Pune|Chennai|London|Berlin|Toronto|Vancouver|Singapore|Remote)\b', line, re.I)
+        if metro_match and 'develop' not in line.lower() and 'experience' not in line.lower():
+            location = metro_match.group(0).strip()
+            break
+
+    # 2. Skills Extraction (Canonical mapping & deduplication)
+    CANONICAL_SKILL_SPECS = [
+        ('Python', r'\b(?:Basic\s+)?Python\b', re.I),
+        ('JavaScript', r'\b(?:JavaScript|JS)\b', re.I),
+        ('TypeScript', r'\b(?:TypeScript|TS)\b', re.I),
+        ('Java', r'\b(?:Basic\s+)?Java\b(?!script)', re.I),
+        ('C', r'(?:^|[^a-zA-Z0-9])C(?:$|[^a-zA-Z0-9+#])', 0),
+        ('C++', r'\bC\+\+\b', re.I),
+        ('C#', r'\bC#\b', re.I),
+        ('SQL', r'\bSQL\b', re.I),
+        ('HTML5', r'\bHTML5\b', re.I),
+        ('HTML', r'\bHTML\b', re.I),
+        ('CSS3', r'\bCSS3\b', re.I),
+        ('CSS', r'\bCSS\b', re.I),
+        ('Go', r'\b(?:Golang|Go)\b', 0),
+        ('Rust', r'\bRust\b', re.I),
+        ('PHP', r'\bPHP\b', re.I),
+        ('React', r'\b(?:React\.js|ReactJS|React)\b', re.I),
+        ('Node.js', r'\b(?:Node\.js|NodeJS|Node)\b', re.I),
+        ('Express', r'\b(?:Express\.js|ExpressJS|Express)\b', re.I),
+        ('REST APIs', r'\b(?:REST\s*APIs?|RESTful\s*APIs?)\b', re.I),
+        ('FastAPI', r'\bFastAPI\b', re.I),
+        ('Django', r'\bDjango\b', re.I),
+        ('Flask', r'\bFlask\b', re.I),
+        ('Spring Boot', r'\bSpring\s*Boot\b', re.I),
+        ('Machine Learning', r'\b(?:Machine\s+Learning(?:\s+Fundamentals)?|ML)\b', re.I),
+        ('Computer Vision', r'\bComputer\s+Vision\b', re.I),
+        ('OpenCV', r'\bOpenCV\b', re.I),
+        ('TensorFlow', r'\bTensorFlow\b', re.I),
+        ('Keras', r'\bKeras\b', re.I),
+        ('Scikit-learn', r'\b(?:Scikit-learn|sklearn)\b', re.I),
+        ('PyTorch', r'\bPyTorch\b', re.I),
+        ('Facial Recognition', r'\bFacial\s+Recognition\b', re.I),
+        ('Prompt Engineering', r'\bPrompt\s+Engineering\b', re.I),
+        ('Data Structures & Algorithms', r'\b(?:Data\s+Structures\s*(?:&|and)\s*Algorithms|DSA)\b', re.I),
+        ('MySQL', r'\bMySQL\b', re.I),
+        ('PostgreSQL', r'\b(?:PostgreSQL|Postgres)\b', re.I),
+        ('MongoDB', r'\bMongoDB\b', re.I),
+        ('SQLite', r'\bSQLite\b', re.I),
+        ('Git', r'\bGit\b(?!hub|lab)', re.I),
+        ('GitHub', r'\bGitHub\b', re.I),
+        ('Docker', r'\bDocker\b', re.I),
+        ('Kubernetes', r'\b(?:Kubernetes|K8s)\b', re.I),
+        ('Linux', r'\bLinux\b', re.I),
+        ('VS Code', r'\b(?:VS\s*Code|Visual\s+Studio\s+Code)\b', re.I),
+        ('AWS', r'\bAWS\b', re.I),
+        ('GCP', r'\b(?:GCP|Google\s+Cloud)\b', re.I),
+        ('Azure', r'\bAzure\b', re.I)
     ]
-    extracted_skills = []
-    for s in known_skills:
-        if s == 'R':
-            if re.search(r'(^|[^a-zA-Z0-9])R([^a-zA-Z0-9]|$)', text):
-                extracted_skills.append(s)
-        else:
-            if re.search(rf'(^|[^a-zA-Z0-9]){re.escape(s)}([^a-zA-Z0-9]|$)', text, re.I):
-                extracted_skills.append(s)
+
+    extracted_skills_set = set()
+    for name, pattern, flags in CANONICAL_SKILL_SPECS:
+        if re.search(pattern, text, flags):
+            extracted_skills_set.add(name)
+
+    if 'HTML5' in extracted_skills_set and 'HTML' in extracted_skills_set:
+        extracted_skills_set.remove('HTML')
+    if 'CSS3' in extracted_skills_set and 'CSS' in extracted_skills_set:
+        extracted_skills_set.remove('CSS')
+
+    extracted_skills = sorted(list(extracted_skills_set))
 
     # 3. Education
     education = []
     in_edu = False
     edu_lines = []
     for line in lines:
-        if re.search(r'^(education|academic background|academics)', line, re.I):
+        if re.search(r'^(education|academic background|academics)\b', line, re.I):
             in_edu = True
             continue
-        if in_edu and re.search(r'^(skills|experience|work history|projects|certifications|employment)', line, re.I):
+        if in_edu and re.search(r'^(technical skills|skills|areas of interest|soft skills|languages|projects|experience|work history|employment|certifications|relevant coursework|achievements|leadership)\b', line, re.I):
             in_edu = False
             break
         if in_edu:
             edu_lines.append(line)
 
-    edu_text = "\n".join(edu_lines) if edu_lines else text
+    if edu_lines:
+        uni_regex = re.compile(r'(University|College|Polytechnic|Institute of Technology|Academy|School)', re.I)
+        deg_regex = re.compile(r'(Bachelor(?:\s+of\s+[A-Za-z]+)?|Master(?:\s+of\s+[A-Za-z]+)?|B\.S\.|B\.A\.|M\.S\.|M\.A\.|Ph\.?D\.|Associate|B\.Tech|B\.E\.)', re.I)
+        yr_regex = re.compile(r'(201\d|202\d)\s*[-–—to]+\s*(201\d|202\d|Present|Expected)', re.I)
+        gpa_regex = re.compile(r'(?:CGPA|GPA)[:\s]+([0-9]\.?\d{0,2})', re.I)
 
-    institution = None
-    for el in edu_lines:
-        if re.search(r'(University|College|Polytechnic|Institute of Technology|Academy|School)', el, re.I):
-            institution = re.sub(r'^(?:at|from|institution:?)\s*', '', el, flags=re.I)
-            institution = re.sub(r',\s*(?:201\d|202\d).*$', '', institution).strip()
-            break
-    if not institution:
-        m = re.search(r'(?:University\s+of\s+[A-Za-z\s]+|[A-Za-z\s&]+(?:University|College|Institute of Technology|Polytechnic|Academy|School of [A-Za-z\s]+))', edu_text, re.I)
-        if m:
-            institution = m.group(0).strip()
+        curr_edu = None
+        for el in edu_lines:
+            if uni_regex.search(el):
+                if curr_edu and (curr_edu.get("institution") or curr_edu.get("degree")):
+                    education.append(curr_edu)
+                inst = re.sub(yr_regex, '', el)
+                inst = re.sub(r'\b\d{1,2}(?:\.\d{1,2})?%', '', inst).strip()
+                inst = re.sub(r'[–—,-]+$', '', inst).strip()
+                yr_match = yr_regex.search(el)
 
-    degree = None
-    field_of_study = None
-    for el in edu_lines:
-        m = re.search(r'(Bachelor\s+of\s+[A-Za-z]+|Master\s+of\s+[A-Za-z]+|Bachelor|Master|B\.S\.|B\.A\.|M\.S\.|M\.A\.|Ph\.?D\.|B\.Tech|B\.E\.)(?:\s+(?:in|of)\s+([A-Za-z\s]+))?', el, re.I)
-        if m:
-            degree = m.group(1).strip()
-            if m.group(2):
-                field_of_study = re.sub(r'\s+(?:from|at|in|with).*$', '', m.group(2), flags=re.I).strip()
-            break
+                curr_edu = {
+                    "institution": inst,
+                    "degree": None,
+                    "field_of_study": None,
+                    "start_date": yr_match.group(1) if yr_match else None,
+                    "end_date": yr_match.group(2) if yr_match else None,
+                    "gpa": None
+                }
+            elif curr_edu and deg_regex.search(el):
+                deg_match = deg_regex.search(el)
+                curr_edu["degree"] = deg_match.group(1).strip() if deg_match else None
+                field_match = re.search(r'(?:in|of)\s+([A-Za-z\s&()]+?)(?=\s*CGPA|\s*GPA|\s*\d|\s*$)', el, re.I)
+                if field_match:
+                    curr_edu["field_of_study"] = re.sub(r'[()]', '', field_match.group(1)).strip()
+                gpa_match = gpa_regex.search(el)
+                if gpa_match:
+                    curr_edu["gpa"] = gpa_match.group(1).strip()
+                yr_match = yr_regex.search(el)
+                if yr_match and not curr_edu.get("end_date"):
+                    curr_edu["start_date"] = yr_match.group(1)
+                    curr_edu["end_date"] = yr_match.group(2)
+            elif curr_edu and yr_regex.search(el):
+                yr_match = yr_regex.search(el)
+                if yr_match and not curr_edu.get("end_date"):
+                    curr_edu["start_date"] = yr_match.group(1)
+                    curr_edu["end_date"] = yr_match.group(2)
+                gpa_match = gpa_regex.search(el)
+                if gpa_match and not curr_edu.get("gpa"):
+                    curr_edu["gpa"] = gpa_match.group(1).strip()
 
-    yr_match = re.search(r'(201\d|202\d)\s*[-–—to]+\s*(201\d|202\d|Present|Expected)', edu_text, re.I)
-    gpa_match = re.search(r'GPA[:\s]+([0-4]\.\d{1,2}(?:\s*/\s*4(?:\.0)?)?)', edu_text, re.I)
+        if curr_edu and (curr_edu.get("institution") or curr_edu.get("degree")):
+            education.append(curr_edu)
 
-    if institution or degree:
-        education.append({
-            "institution": institution,
-            "degree": degree,
-            "field_of_study": field_of_study,
-            "start_date": yr_match.group(1) if yr_match else None,
-            "end_date": yr_match.group(2) if yr_match else None,
-            "gpa": gpa_match.group(1) if gpa_match else None
-        })
-
-    # 4. Experience
+    # 4. Work Experience
     experience = []
     in_exp = False
     exp_lines = []
     for line in lines:
-        if re.search(r'^(experience|work experience|employment history|professional experience|internships)', line, re.I):
+        if re.search(r'^(experience|work experience|employment history|professional experience|internships)\b', line, re.I):
             in_exp = True
             continue
-        if in_exp and re.search(r'^(education|skills|projects|certifications)', line, re.I):
+        if in_exp and re.search(r'^(technical skills|skills|areas of interest|soft skills|languages|projects|education|certifications|relevant coursework|achievements|leadership)\b', line, re.I):
             in_exp = False
             break
         if in_exp:
@@ -306,37 +375,32 @@ def deterministic_python_fallback(text: str) -> Dict[str, Any]:
 
     if exp_lines:
         curr_exp = None
-        i = 0
-        while i < len(exp_lines):
-            el = exp_lines[i]
+        bullet_re = re.compile(r'^[•·\u2022\u2023\u25E6\u25AA\u25CF\u25CB\uFFFD\-*–—]\s*')
+        for el in exp_lines:
             date_match = re.search(r'(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|Summer|Fall|Spring|Winter)?\s*(201\d|202\d)\s*[-–—to]+\s*(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)?\s*(201\d|202\d|Present)', el, re.I)
-            if date_match or (' - ' in el and re.search(r'Intern|Engineer|Developer|Assistant', el, re.I)):
-                if curr_exp:
+            is_bullet = bool(bullet_re.search(el))
+            if (date_match or (' - ' in el and re.search(r'Intern|Engineer|Developer|Assistant', el, re.I))) and not is_bullet:
+                if curr_exp and (curr_exp.get("company") or curr_exp.get("role")):
                     experience.append(curr_exp)
                 raw_clean = re.sub(r'\([^\)]*(?:201\d|202\d)[^\)]*\)', '', el)
                 parts = [p.strip() for p in re.split(r'[-–|@,]', raw_clean) if p.strip()]
-                company = parts[0] if parts else "Organization"
-                role = parts[1] if len(parts) > 1 else None
-
-                # Lookahead for title on next line
-                if not role and i + 1 < len(exp_lines) and not exp_lines[i + 1].startswith(('•', '-', '*')) and len(exp_lines[i + 1]) < 65:
-                    role = exp_lines[i + 1].strip()
-                    i += 1
-
                 curr_exp = {
-                    "company": company.strip('()'),
-                    "role": role or "Software Engineer",
+                    "company": parts[0].strip('()') if parts else "Organization",
+                    "role": parts[1].strip('()') if len(parts) > 1 else "Software Engineering Intern",
                     "location": None,
                     "start_date": date_match.group(0).split('-')[0].strip() if date_match else None,
                     "end_date": date_match.group(0).split('-')[-1].strip() if date_match else None,
                     "bullets": []
                 }
-            elif curr_exp and el.startswith(('•', '-', '*')):
-                curr_exp["bullets"].append(re.sub(r'^[•\-*]\s*', '', el).strip())
-            elif curr_exp and len(el) > 20:
-                curr_exp["bullets"].append(el.strip())
-            i += 1
-        if curr_exp:
+            elif curr_exp:
+                clean_bullet = bullet_re.sub('', el).strip()
+                if is_bullet:
+                    curr_exp["bullets"].append(clean_bullet)
+                elif curr_exp["bullets"]:
+                    curr_exp["bullets"][-1] += " " + clean_bullet
+                else:
+                    curr_exp["bullets"].append(clean_bullet)
+        if curr_exp and (curr_exp.get("company") or curr_exp.get("role")):
             experience.append(curr_exp)
 
     # 5. Projects
@@ -344,31 +408,61 @@ def deterministic_python_fallback(text: str) -> Dict[str, Any]:
     in_proj = False
     proj_lines = []
     for line in lines:
-        if re.search(r'^(projects|technical projects|academic projects)', line, re.I):
+        if re.search(r'^(projects|technical projects|academic projects|key projects)\b', line, re.I):
             in_proj = True
             continue
-        if in_proj and re.search(r'^(education|skills|experience|work history|certifications)', line, re.I):
+        if in_proj and re.search(r'^(technical skills|skills|areas of interest|soft skills|languages|education|experience|work history|employment|certifications|achievements|leadership|relevant coursework)\b', line, re.I):
             in_proj = False
             break
         if in_proj:
             proj_lines.append(line)
 
     if proj_lines:
+        bullet_re = re.compile(r'^[•·\u2022\u2023\u25E6\u25AA\u25CF\u25CB\uFFFD\-*–—]\s*')
         curr_proj = None
         for pl in proj_lines:
-            if not pl.startswith(('•', '-', '*')) and len(pl) < 60 and 'http' not in pl:
-                if curr_proj:
+            pl = pl.strip()
+            if not pl:
+                continue
+            is_bullet = bool(bullet_re.search(pl))
+            is_sub = bool(re.search(r'^(personal project|academic project|capstone project|ongoing)\b', pl, re.I))
+            if is_sub:
+                continue
+
+            prev_b = curr_proj["bullets"][-1] if (curr_proj and curr_proj["bullets"]) else None
+            prev_incomplete = prev_b and not bool(re.search(r'[.;!]$', prev_b.strip()))
+            starts_lower = bool(re.match(r'^[a-z]', pl))
+
+            is_title = (
+                not is_bullet and
+                bool(re.match(r'^[A-Z0-9]', pl)) and
+                not pl.endswith('.') and
+                len(pl) < 80 and
+                'http' not in pl and
+                not (prev_incomplete and starts_lower)
+            )
+
+            if is_title:
+                if curr_proj and curr_proj.get("title"):
                     projects.append(curr_proj)
-                title = re.sub(r'[:\-].*$', '', pl).strip()
+                title_match = re.match(r'^([A-Za-z0-9\s&()\'/]+?)(?:\s*[-–—:]\s*(.+))?$', pl)
+                title = title_match.group(1).strip() if title_match else pl
                 curr_proj = {
-                    "title": title,
-                    "tech_stack": [s for s in known_skills if re.search(rf'\b{re.escape(s)}\b', pl, re.I)],
+                    "title": title or pl,
+                    "tech_stack": [s for s in extracted_skills if re.search(rf'\b{re.escape(s)}\b', pl, re.I)],
                     "description": pl,
                     "bullets": []
                 }
-            elif curr_proj and pl.startswith(('•', '-', '*')):
-                curr_proj["bullets"].append(re.sub(r'^[•\-*]\s*', '', pl).strip())
-        if curr_proj:
+            elif curr_proj:
+                clean_text = bullet_re.sub('', pl).strip()
+                if is_bullet:
+                    curr_proj["bullets"].append(clean_text)
+                elif curr_proj["bullets"]:
+                    curr_proj["bullets"][-1] += " " + clean_text
+                else:
+                    curr_proj["bullets"].append(clean_text)
+
+        if curr_proj and curr_proj.get("title"):
             projects.append(curr_proj)
 
     return {

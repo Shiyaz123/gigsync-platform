@@ -128,7 +128,7 @@ def validate_extracted_resume(raw_data: Dict[str, Any], raw_text: str = "") -> T
                 end = (edu.get("end_date") or "").strip()
                 gpa = (edu.get("gpa") or "").strip()
 
-                if inst or deg or field:
+                if inst or deg:
                     cleaned_education.append({
                         "institution": inst or None,
                         "degree": deg or None,
@@ -223,5 +223,24 @@ def validate_extracted_resume(raw_data: Dict[str, Any], raw_text: str = "") -> T
         "certifications": cleaned_certs
     }
 
-    confidence = max(10, min(100, confidence))
+    # Meaningful Confidence Score calculation based on factual field-level extraction evidence:
+    # Full Name (20), Email (20), Phone (10), Education (20), Skills (15), Projects/Experience (15) = 100 max
+    score = 0
+    if full_name:
+        score += 20
+    if email:
+        score += 20
+    if phone:
+        score += 10
+    if cleaned_education:
+        has_degree = any(e.get("degree") for e in cleaned_education)
+        score += 20 if has_degree else 10
+    if len(cleaned_skills) >= 3:
+        score += 15
+    elif len(cleaned_skills) > 0:
+        score += 10
+    if cleaned_projects or cleaned_experience:
+        score += 15
+
+    confidence = min(100, max(0, score))
     return cleaned_schema, warnings, confidence

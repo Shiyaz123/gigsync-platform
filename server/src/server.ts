@@ -219,11 +219,15 @@ app.post('/api/parser/upload', (req: Request, res: Response, next) => {
     if (fs.existsSync(cliScript)) {
       try {
         const { stdout } = await execFileAsync('py', [cliScript, tempFilePath], {
-          timeout: 30000,
+          timeout: 45000,
           env: { ...process.env }
         });
 
-        const pyResult = JSON.parse(stdout.trim());
+        const jsonMatch = stdout.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) {
+          throw new Error('No valid JSON object found in Python output');
+        }
+        const pyResult = JSON.parse(jsonMatch[0]);
         if (pyResult.success && pyResult.extracted_profile) {
           const p = pyResult.extracted_profile;
           const extractedProfile: CandidateProfile = {
@@ -318,16 +322,42 @@ app.post('/api/parser/upload', (req: Request, res: Response, next) => {
 
     if (nameLower.endsWith('.pdf') || file.mimetype === 'application/pdf') {
       try {
-        const pdfjsLib = await import('pdfjs-dist');
+        const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs');
         const uint8 = new Uint8Array(file.buffer);
-        const loadingTask = pdfjsLib.getDocument({ data: uint8, useSystemFonts: true });
+        const loadingTask = pdfjsLib.getDocument({ data: uint8, isEvalSupported: false, useSystemFonts: true } as any);
         const pdfDoc = await loadingTask.promise;
         let fullText = '';
         for (let i = 1; i <= pdfDoc.numPages; i++) {
           const page = await pdfDoc.getPage(i);
           const content = await page.getTextContent();
-          const strings = content.items.map((item: any) => item.str || '');
-          fullText += strings.join(' ') + '\n';
+          let pageLines: string[] = [];
+          let currentLine = '';
+          let lastY: number | null = null;
+
+          for (const item of content.items as any[]) {
+            if (!item.str && !item.hasEOL) continue;
+            const y = item.transform ? item.transform[5] : null;
+            if (lastY !== null && y !== null && Math.abs(y - lastY) > 3.5) {
+              if (currentLine.trim()) pageLines.push(currentLine.trim());
+              currentLine = '';
+            }
+            const str = item.str || '';
+            if (str) {
+              if (currentLine && !currentLine.endsWith(' ') && !str.startsWith(' ')) {
+                currentLine += ' ';
+              }
+              currentLine += str;
+            }
+            if (item.hasEOL) {
+              if (currentLine.trim()) pageLines.push(currentLine.trim());
+              currentLine = '';
+              lastY = null;
+            } else {
+              lastY = y;
+            }
+          }
+          if (currentLine.trim()) pageLines.push(currentLine.trim());
+          fullText += pageLines.join('\n') + '\n\n';
         }
         extractedText = fullText;
       } catch (pdfErr) {
@@ -349,7 +379,7 @@ app.post('/api/parser/upload', (req: Request, res: Response, next) => {
       });
     }
 
-    const parsedResult = parseResumeText(extractedText);
+    const parsedResult = parseResumeText(extractedText, file.originalname);
     currentProfile = JSON.parse(JSON.stringify(parsedResult.extractedProfile));
 
     return res.json({
