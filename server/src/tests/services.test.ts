@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { calculateJobMatch, matchesSkillToken, normalizeSkill } from '../services/matchingEngine';
 import { escapeLatex, generateLatexResume } from '../services/latexService';
 import { parseResumeText } from '../services/parserService';
-import { DEFAULT_GUEST_PROFILE, SEEDED_JOB_LISTINGS } from '../data/seedData';
+import { DEFAULT_GUEST_PROFILE } from '../data/seedData';
+import { MOCK_TEST_JOB_LISTINGS } from './fixtures/mockJobs';
 
 test('MatchingEngine: normalizes skill tokens correctly', () => {
   assert.equal(normalizeSkill('React.js'), 'react');
@@ -19,7 +20,7 @@ test('MatchingEngine: matches skill aliases accurately', () => {
 });
 
 test('MatchingEngine: calculates explainable match score and separates hard constraints', () => {
-  const job = SEEDED_JOB_LISTINGS[0]; // Junior Full-Stack Developer
+  const job = MOCK_TEST_JOB_LISTINGS[0]; // Junior Full-Stack Developer
   const result = calculateJobMatch(DEFAULT_GUEST_PROFILE, job);
 
   assert.ok(result.overallScore > 60, 'Score should be high for matching full-stack profile');

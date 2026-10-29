@@ -10,7 +10,6 @@ import { promisify } from 'util';
 const execFileAsync = promisify(execFile);
 import {
   DEFAULT_GUEST_PROFILE,
-  SEEDED_JOB_LISTINGS,
   SEEDED_LEARNING_RESOURCES
 } from './data/seedData';
 import { calculateJobMatch } from './services/matchingEngine';
@@ -27,6 +26,10 @@ import {
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+const FLASK_SERVICE_URL = (process.env.FLASK_SERVICE_URL || 'http://127.0.0.1:5001').replace(/\/+$/, '');
+
+// In-memory cache for live genuine job listings fetched from Flask/providers
+const liveJobStore = new Map<string, JobListing>();
 
 app.use(cors({
   origin: '*',
@@ -53,18 +56,8 @@ const uploadMiddleware = multer({
 
 // In-memory data store for the session
 let currentProfile: CandidateProfile = JSON.parse(JSON.stringify(DEFAULT_GUEST_PROFILE));
-let savedJobs: SavedJob[] = [
-  {
-    id: 'saved_1',
-    userId: currentProfile.userId,
-    jobId: 'job_1',
-    job: SEEDED_JOB_LISTINGS[0],
-    matchScore: 88,
-    status: 'interested',
-    notes: 'Great match for React and TypeScript skills. Need to review Docker basics.',
-    savedAt: new Date(Date.now() - 86400000).toISOString()
-  }
-];
+// Genuine saved jobs: initialized empty in production (no fabricated jobs)
+let savedJobs: SavedJob[] = [];
 let resumeVersions: ResumeVersion[] = [
   {
     id: 'res_v1',
@@ -427,52 +420,95 @@ app.post('/api/ai/resume-assistant', (req: Request, res: Response) => {
 
 // --------------------------------------------------------------------------
 // Jobs & Discovery (FR-14, FR-15, FR-20)
+// Powered by Python Flask Job Search Service with Real Job Providers
 // --------------------------------------------------------------------------
-app.get('/api/jobs', (req: Request, res: Response) => {
-  const { keyword, workMode, experienceLevel, location } = req.query;
+app.get('/api/jobs', async (req: Request, res: Response) => {
+  const { keyword, role, workMode, work_mode, experienceLevel, experience_level, experience, location, page, limit } = req.query;
 
-  let results = [...SEEDED_JOB_LISTINGS];
+  const params = new URLSearchParams();
+  const searchRole = (role || keyword || '') as string;
+  if (searchRole) params.append('role', searchRole);
+  if (location && typeof location === 'string') params.append('location', location);
 
-  if (keyword && typeof keyword === 'string') {
-    const kw = keyword.toLowerCase();
-    results = results.filter(j =>
-      j.title.toLowerCase().includes(kw) ||
-      j.company.toLowerCase().includes(kw) ||
-      j.requirements.essentialSkills.some(s => s.toLowerCase().includes(kw)) ||
-      j.description.toLowerCase().includes(kw)
-    );
+  const resolvedWorkMode = (workMode || work_mode || 'All') as string;
+  if (resolvedWorkMode && resolvedWorkMode !== 'All') params.append('work_mode', resolvedWorkMode);
+
+  const resolvedExp = (experienceLevel || experience_level || experience || 'All') as string;
+  if (resolvedExp && resolvedExp !== 'All') params.append('experience_level', resolvedExp);
+
+  if (page) params.append('page', String(page));
+  if (limit) params.append('limit', String(limit));
+
+  const queryStr = params.toString() ? `?${params.toString()}` : '';
+  const flaskUrl = `${FLASK_SERVICE_URL}/api/jobs${queryStr}`;
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 12000);
+
+    const flaskRes = await fetch(flaskUrl, {
+      signal: controller.signal,
+      headers: { 'Accept': 'application/json' }
+    });
+    clearTimeout(timeout);
+
+    if (!flaskRes.ok) {
+      let errMsg = `Flask service returned HTTP ${flaskRes.status}`;
+      try {
+        const errJson: any = await flaskRes.json();
+        if (errJson && errJson.message) errMsg = errJson.message;
+      } catch {}
+      return res.status(flaskRes.status).json({
+        error: 'Job Search Provider Error',
+        message: errMsg
+      });
+    }
+
+    const data: any = await flaskRes.json();
+    const rawJobs: JobListing[] = Array.isArray(data) ? data : (data.jobs || []);
+
+    // Cache the genuine jobs in liveJobStore and calculate honest match scores
+    const jobsWithScores = rawJobs.map(job => {
+      liveJobStore.set(job.id, job);
+      const match = calculateJobMatch(currentProfile, job);
+      return {
+        ...job,
+        matchScore: match.overallScore,
+        matchSummary: match.explanation
+      };
+    });
+
+    res.json(jobsWithScores);
+  } catch (err: any) {
+    console.error('[GigSync Gateway] Failed to query Flask job search service:', err.message);
+    // Return structured 503 error without fabricated jobs
+    return res.status(503).json({
+      error: 'Job Service Unavailable',
+      message: 'The Python Flask job search service is not reachable. Please start the Flask service on port 5001 to execute live location-based searches.'
+    });
   }
-
-  if (workMode && typeof workMode === 'string' && workMode !== 'All') {
-    results = results.filter(j => j.workMode.toLowerCase() === workMode.toLowerCase());
-  }
-
-  if (experienceLevel && typeof experienceLevel === 'string' && experienceLevel !== 'All') {
-    results = results.filter(j => j.experienceLevel.toLowerCase() === experienceLevel.toLowerCase());
-  }
-
-  if (location && typeof location === 'string') {
-    results = results.filter(j => j.location.toLowerCase().includes(location.toLowerCase()));
-  }
-
-  // Attach real-time computed relevance scores for user
-  const jobsWithScores = results.map(job => {
-    const match = calculateJobMatch(currentProfile, job);
-    return {
-      ...job,
-      matchScore: match.overallScore,
-      matchSummary: match.explanation
-    };
-  });
-
-  res.json(jobsWithScores);
 });
 
-app.get('/api/jobs/:id', (req: Request, res: Response) => {
-  const job = SEEDED_JOB_LISTINGS.find(j => j.id === req.params.id);
+app.get('/api/jobs/:id', async (req: Request, res: Response) => {
+  let job = liveJobStore.get(req.params.id);
+
   if (!job) {
-    return res.status(404).json({ error: 'Job listing not found.' });
+    try {
+      const flaskRes = await fetch(`${FLASK_SERVICE_URL}/api/jobs/${req.params.id}`, {
+        headers: { 'Accept': 'application/json' }
+      });
+      if (flaskRes.ok) {
+        const data: any = await flaskRes.json();
+        job = data.job || data;
+        if (job) liveJobStore.set(job.id, job);
+      }
+    } catch {}
   }
+
+  if (!job) {
+    return res.status(404).json({ error: 'Job listing not found. It may have expired or was not yet cached from search results.' });
+  }
+
   const match = calculateJobMatch(currentProfile, job);
   res.json({ job, match });
 });
@@ -480,12 +516,24 @@ app.get('/api/jobs/:id', (req: Request, res: Response) => {
 // --------------------------------------------------------------------------
 // Matching Engine (FR-16, FR-17, FR-18, FR-19)
 // --------------------------------------------------------------------------
-app.post('/api/match', (req: Request, res: Response) => {
+app.post('/api/match', async (req: Request, res: Response) => {
   const { jobId, customJob } = req.body;
 
   let targetJob: JobListing | undefined;
   if (jobId) {
-    targetJob = SEEDED_JOB_LISTINGS.find(j => j.id === jobId);
+    targetJob = liveJobStore.get(jobId);
+    if (!targetJob) {
+      try {
+        const flaskRes = await fetch(`${FLASK_SERVICE_URL}/api/jobs/${jobId}`, {
+          headers: { 'Accept': 'application/json' }
+        });
+        if (flaskRes.ok) {
+          const data: any = await flaskRes.json();
+          targetJob = data.job || data;
+          if (targetJob) liveJobStore.set(targetJob.id, targetJob);
+        }
+      } catch {}
+    }
   } else if (customJob) {
     targetJob = customJob;
   }
@@ -493,6 +541,19 @@ app.post('/api/match', (req: Request, res: Response) => {
   if (!targetJob) {
     return res.status(400).json({ error: 'A valid jobId or customJob is required for matching.' });
   }
+
+  // Attempt match computation via Python Flask matching engine endpoint
+  try {
+    const matchRes = await fetch(`${FLASK_SERVICE_URL}/api/match`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ profile: currentProfile, job: targetJob })
+    });
+    if (matchRes.ok) {
+      const matchResult = await matchRes.json();
+      return res.json(matchResult);
+    }
+  } catch {}
 
   const result = calculateJobMatch(currentProfile, targetJob);
   res.json(result);
@@ -709,11 +770,11 @@ app.get('/api/saved-jobs', (req: Request, res: Response) => {
 });
 
 app.post('/api/saved-jobs', (req: Request, res: Response) => {
-  const { jobId, status = 'saved', notes = '' } = req.body;
+  const { jobId, status = 'saved', notes = '', job: customJob } = req.body;
 
-  const job = SEEDED_JOB_LISTINGS.find(j => j.id === jobId);
+  const job = liveJobStore.get(jobId) || customJob;
   if (!job) {
-    return res.status(404).json({ error: 'Job not found' });
+    return res.status(404).json({ error: 'Job not found in active session.' });
   }
 
   const existingIdx = savedJobs.findIndex(sj => sj.jobId === jobId);

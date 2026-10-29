@@ -21,13 +21,14 @@
 
 | Layer | Technology | Key Modules & Purpose |
 | :--- | :--- | :--- |
-| **Frontend** | React 18, TypeScript, Vite | Responsive UI, state management, interactive canvas, glassmorphism design system |
-| **Styling** | Vanilla CSS (CSS Variables) | Modern design tokens, dark/light themes, fluid typography, print `@media print` |
-| **Backend API** | Node.js, Express, TypeScript | REST endpoints (`/api/profile`, `/api/jobs`, `/api/match`, `/api/roadmap`, `/api/resumes`) |
-| **Resume Extraction** | Heuristic Parser Service | Document text extraction, confidence scoring, review-and-correct modal |
-| **LaTeX Engine** | LaTeX Service | Character escaping against injection, multi-template generation (`modern`, `academic`, etc.) |
-| **Matching Engine**| Weighted Relevance Service| Essential vs. preferred skill weighting, evidence tracking, constraint classification |
-| **Testing** | Node.js Test Runner & Assert | Automated unit tests for matching algorithms, LaTeX sanitizer, and parsing heuristics |
+| **Frontend** | React 18, TypeScript, Vite | Responsive UI, state management, interactive canvas, editorial design system |
+| **Styling** | Vanilla CSS (CSS Variables) | Modern design tokens, editorial serif typography, print `@media print` |
+| **Gateway API** | Node.js, Express, TypeScript | Session state, auth, profile, LaTeX resumes, saved jobs, courses, roadmap |
+| **Job Search Service** | Python Flask, Requests, Pytest | Real location-based job search via Adzuna, The Muse, Remotive APIs |
+| **Matching Engine**| Python Rule-Based Scoring | Honest evidence-based scoring (Skills 50%, Exp 25%, Edu 15%, Role 10%) |
+| **Resume Extraction** | PyMuPDF (fitz), python-docx, Gemini | Multimodal document parsing, confidence scoring, zero-hallucination |
+| **LaTeX Engine** | LaTeX Service | Character escaping against injection, multi-template generation (`modern`, etc.) |
+| **Testing** | Pytest & Node Test Runner | 100% automated test coverage across Python Flask and Express services |
 
 ---
 

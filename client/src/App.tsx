@@ -270,6 +270,9 @@ export const App: React.FC = () => {
             savedJobs={savedJobs}
             onToggleSaveJob={handleToggleSaveJob}
             onSelectJob={(jobId) => handleNavigate('job-detail', { jobId })}
+            onUpdateJobs={setJobs}
+            defaultLocation={profile.personalInfo.location || (profile.careerPreferences?.targetLocations?.[0] || '')}
+            defaultRole={profile.personalInfo.title || (profile.careerPreferences?.targetRoles?.[0] || 'Software Engineer')}
           />
         )}
 

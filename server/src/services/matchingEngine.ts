@@ -195,40 +195,67 @@ export function calculateJobMatch(
 
   // 3. Score Calculations (PRD Section 7.2)
   // Essential skills: 70% of skills weight, Preferred skills: 30%
-  const essentialRatio = job.requirements.essentialSkills.length > 0
-    ? essentialMatchedCount / job.requirements.essentialSkills.length
-    : 1;
+  let skillsScore = 0;
+  if (allProfileSkills.length > 0 || profile.projects.length > 0) {
+    const essentialRatio = job.requirements.essentialSkills.length > 0
+      ? essentialMatchedCount / job.requirements.essentialSkills.length
+      : 1;
 
-  const preferredRatio = job.requirements.preferredSkills.length > 0
-    ? preferredMatchedCount / job.requirements.preferredSkills.length
-    : 1;
+    const preferredRatio = job.requirements.preferredSkills.length > 0
+      ? preferredMatchedCount / job.requirements.preferredSkills.length
+      : 1;
 
-  const skillsScore = Math.round((essentialRatio * 0.7 + preferredRatio * 0.3) * 100);
+    skillsScore = Math.round((essentialRatio * 0.7 + preferredRatio * 0.3) * 100);
+  }
 
   // Experience relevance (25% weight): based on projects & relevant internships
-  let experienceScore = 70; // baseline for student projects
+  let experienceScore = 0;
   if (profile.experience.length > 0) {
-    experienceScore = Math.min(100, 75 + (profile.experience.length * 12));
-  }
-  if (job.requirements.minYearsExperience > 0 && profile.experience.length === 0) {
-    experienceScore = Math.max(35, experienceScore - 30);
+    experienceScore = Math.min(100, 65 + (profile.experience.length * 15));
+    if (job.requirements.minYearsExperience > profile.experience.length) {
+      experienceScore = Math.max(30, experienceScore - 20);
+    }
+  } else if (profile.projects.length > 0) {
+    experienceScore = job.requirements.minYearsExperience === 0 ? 50 : 25;
   }
 
   // Education score (15% weight)
-  let educationScore = 85;
+  let educationScore = 0;
   if (profile.education.length > 0) {
+    educationScore = 75;
     const csDegree = profile.education.find(e =>
-      /computer science|software|engineering|data|information/i.test(e.fieldOfStudy)
+      /computer science|software|engineering|data|information|math/i.test(e.fieldOfStudy)
     );
     if (csDegree) educationScore = 95;
   }
 
   // Role similarity score (10% weight)
-  const targetMatches = profile.careerPreferences.targetRoles.some(r =>
-    job.title.toLowerCase().includes(r.toLowerCase()) ||
-    r.toLowerCase().includes(job.title.toLowerCase())
-  );
-  const roleSimilarityScore = targetMatches ? 95 : 75;
+  let roleSimilarityScore = 0;
+  if (profile.careerPreferences.targetRoles && profile.careerPreferences.targetRoles.length > 0) {
+    const targetMatches = profile.careerPreferences.targetRoles.some(r =>
+      job.title.toLowerCase().includes(r.toLowerCase()) ||
+      r.toLowerCase().includes(job.title.toLowerCase())
+    );
+    if (targetMatches) {
+      roleSimilarityScore = 100;
+    } else {
+      const partialOverlap = profile.careerPreferences.targetRoles.some(r => {
+        const rTokens = r.toLowerCase().split(/\s+/);
+        const jTokens = job.title.toLowerCase().split(/\s+/);
+        return rTokens.some(t => jTokens.includes(t));
+      });
+      roleSimilarityScore = partialOverlap ? 70 : 0;
+    }
+  } else if (profile.personalInfo.title) {
+    const candTitle = profile.personalInfo.title.toLowerCase();
+    const jobTitle = job.title.toLowerCase();
+    if (jobTitle.includes(candTitle) || candTitle.includes(jobTitle)) {
+      roleSimilarityScore = 90;
+    } else {
+      const partialOverlap = candTitle.split(/\s+/).some(t => jobTitle.split(/\s+/).includes(t));
+      roleSimilarityScore = partialOverlap ? 65 : 0;
+    }
+  }
 
   // Weighted total: Skills 50%, Experience 25%, Education 15%, Role 10%
   const overallScore = Math.round(
@@ -310,7 +337,7 @@ export function calculateJobMatch(
     id: `match_${Date.now()}_${job.id}`,
     userId: profile.userId,
     jobId: job.id,
-    overallScore: Math.min(99, Math.max(15, overallScore)),
+    overallScore: Math.min(100, Math.max(0, overallScore)),
     scoreBreakdown: {
       skillsScore,
       experienceScore,

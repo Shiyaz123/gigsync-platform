@@ -221,18 +221,27 @@ export const api = {
   // Jobs
   async getJobs(filters?: {
     keyword?: string;
+    role?: string;
     workMode?: string;
     experienceLevel?: string;
     location?: string;
+    skills?: string[];
+    page?: number;
+    limit?: number;
   }): Promise<JobListing[]> {
     const params = new URLSearchParams();
+    if (filters?.role) params.append('role', filters.role);
     if (filters?.keyword) params.append('keyword', filters.keyword);
     if (filters?.workMode) params.append('workMode', filters.workMode);
     if (filters?.experienceLevel) params.append('experienceLevel', filters.experienceLevel);
     if (filters?.location) params.append('location', filters.location);
+    if (filters?.skills && filters.skills.length > 0) params.append('skills', filters.skills.join(','));
+    if (filters?.page) params.append('page', String(filters.page));
+    if (filters?.limit) params.append('limit', String(filters.limit));
 
     const query = params.toString() ? `?${params.toString()}` : '';
-    return request(`/jobs${query}`);
+    const res = await request<any>(`/jobs${query}`);
+    return Array.isArray(res) ? res : (res.jobs || []);
   },
 
   async getJobById(id: string): Promise<{ job: JobListing; match: JobMatchResult }> {
