@@ -6,7 +6,7 @@
     "install:all": "cd client && npm install && cd ../server && npm install",
     "build:server": "cd server && npm run build",
     "build:client": "cd client && npm run build",
-    "build": "npm run build:server && npm run build:client",
+    "build": "cd client && npm install && npm run build",
     "start:server": "node server/dist/server.js",
     "test:server": "cd server && npm run build && npm test"
   },
@@ -19,7 +19,20 @@
   ],
   "author": "GigSync Engineering Team",
   "license": "MIT",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.2",
+    "mammoth": "^1.13.0",
+    "multer": "^2.5.0",
+    "pdfjs-dist": "^6.4.299"
+  },
   "devDependencies": {
-    "docx": "^9.15.0"
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/multer": "^2.3.0",
+    "@types/node": "^22.10.1",
+    "docx": "^9.15.0",
+    "typescript": "^5.7.2"
   }
 }

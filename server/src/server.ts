@@ -37,6 +37,14 @@ app.use(cors({
 app.options('*', cors());
 app.use(express.json({ limit: '10mb' }));
 
+// URL normalizer: ensure req.url starts with /api for Vercel serverless / proxy rewrites
+app.use((req, res, next) => {
+  if (!req.url.startsWith('/api')) {
+    req.url = `/api${req.url}`;
+  }
+  next();
+});
+
 const uploadStorage = multer.memoryStorage();
 const uploadMiddleware = multer({
   storage: uploadStorage,
