@@ -125,22 +125,23 @@ class TheMuseProvider(BaseJobProvider):
                         continue
 
                 # Location strictly respected:
-                # If user searched a specific non-remote location like "Bengaluru" or "London",
-                # do not return on-site jobs in "San Francisco, CA"!
                 if location and location.strip():
                     req_loc = location.strip().lower()
                     if req_loc not in ["all", "any", "worldwide"]:
-                        is_remote_search = req_loc in ["remote", "flexible / remote", "wfh"]
-                        is_loc_match = req_loc in loc_str.lower() or any(req_loc in l.lower() for l in locations_list)
+                        is_remote_search = req_loc in ["remote", "flexible / remote", "flexible", "wfh"]
+                        # Extract city / region tokens (e.g. 'San Jose, CA' -> ['san jose', 'ca'])
+                        loc_tokens = [t.strip() for t in re.split(r'[\s,]+', req_loc) if len(t.strip()) > 2]
+                        is_loc_match = any(t in loc_str.lower() for t in loc_tokens) or any(
+                            any(t in l.lower() for t in loc_tokens) for l in locations_list
+                        )
                         is_job_remote = "flexible / remote" in loc_str.lower() or "remote" in loc_str.lower()
-                        
+
                         if is_remote_search:
                             if not is_job_remote:
                                 continue
                         else:
-                            # User searched for a specific city/country (e.g. Bengaluru, India or London)
-                            if not is_loc_match:
-                                # Not in the target city/country
+                            # User searched for a specific city/country (e.g. San Jose, CA or Bengaluru)
+                            if not (is_loc_match or is_job_remote):
                                 continue
 
                 # Work mode detection

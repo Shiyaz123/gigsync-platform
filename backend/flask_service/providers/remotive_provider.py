@@ -86,15 +86,16 @@ class RemotiveProvider(BaseJobProvider):
             return []
 
         search_query = role or ""
-        if skills:
-            search_query += " " + " ".join(skills)
 
         params: Dict[str, Any] = {
             "category": "software-dev",
             "limit": limit * 2  # Fetch extra to filter on location eligibility
         }
         if search_query.strip():
-            params["search"] = search_query.strip()
+            # Only use single strong keyword for remotive endpoint search
+            tokens = [t.lower() for t in re.split(r'[\s,&/]+', search_query) if len(t) > 2]
+            if tokens:
+                params["search"] = tokens[0]
 
         headers = {
             "User-Agent": "GigSync/1.0 (Authorized Job Discovery Agent)"
@@ -118,13 +119,21 @@ class RemotiveProvider(BaseJobProvider):
                 salary = item.get("salary") or "Competitive / Disclosed upon interview"
                 tags = item.get("tags", [])
 
+                full_text = f"{title} {desc} {' '.join(tags)}".lower()
+
+                # Filter by role keywords if specified
+                if role and role.strip():
+                    role_tokens = [t.lower() for t in re.split(r'[\s,&/]+', role) if len(t) > 2]
+                    # Filter out non-matching software engineering positions
+                    if role_tokens and not any(t in full_text for t in role_tokens):
+                        continue
+
                 # Verify location eligibility
                 if location and location.strip():
                     if not self._is_eligible_location(location.strip(), cand_req_loc):
                         continue
 
                 # Experience level inference
-                full_text = f"{title} {desc}".lower()
                 detected_exp = "Entry-level"
                 if "intern" in full_text:
                     detected_exp = "Internship"

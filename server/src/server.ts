@@ -17,6 +17,7 @@ import { calculateJobMatch } from './services/matchingEngine';
 import { generateLatexResume } from './services/latexService';
 import { parseResumeText } from './services/parserService';
 import { processAssistantTurn, AssistantState } from './services/aiAssistantService';
+import { searchRealWorldJobs } from './services/realJobService';
 import {
   CandidateProfile,
   JobListing,
@@ -488,7 +489,7 @@ app.get('/api/jobs', async (req: Request, res: Response) => {
   // 1. Attempt Flask Job Service first if configured & running
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 3000);
+    const timeout = setTimeout(() => controller.abort(), 3500);
 
     const flaskRes = await fetch(flaskUrl, {
       signal: controller.signal,
@@ -498,53 +499,36 @@ app.get('/api/jobs', async (req: Request, res: Response) => {
 
     if (flaskRes.ok) {
       const data: any = await flaskRes.json();
-      rawJobs = Array.isArray(data) ? data : (data.jobs || []);
+      const list = Array.isArray(data) ? data : (data.jobs || []);
+      if (Array.isArray(list) && list.length > 0) {
+        rawJobs = list;
+      }
     }
   } catch (err: any) {
-    // Flask service is not active (e.g. running on Vercel or Flask offline locally)
+    // Flask service is not active (e.g. running on Vercel serverless)
   }
 
-  // 2. If Flask did not respond, use genuine filtered SEEDED_JOB_LISTINGS with real location/role/mode matching
+  // 2. Query live genuine vacancies from authorized public providers directly in Node (The Muse, Remotive, Arbeitnow)
   if (!rawJobs) {
-    let filtered = [...SEEDED_JOB_LISTINGS];
-
-    const roleLower = ((role as string) || (keyword as string) || '').toLowerCase().trim();
-    if (roleLower) {
-      const roleTokens = roleLower.split(/[\s,&/]+/).filter(t => t.length > 2);
-      const roleFiltered = filtered.filter((j: JobListing) => {
-        const jTitle = j.title.toLowerCase();
-        const jDesc = j.description.toLowerCase();
-        const jSkills = (j.requirements?.essentialSkills || []).map((s: string) => s.toLowerCase());
-        return roleTokens.some(t => jTitle.includes(t) || jDesc.includes(t) || jSkills.some((s: string) => s.includes(t)));
+    try {
+      const liveRealJobs = await searchRealWorldJobs({
+        role: searchRole || undefined,
+        location: (location as string) || undefined,
+        workMode: resolvedWorkMode !== 'All' ? resolvedWorkMode : undefined,
+        experienceLevel: resolvedExp !== 'All' ? resolvedExp : undefined,
+        limit: limit ? Number(limit) : 20
       });
-      if (roleFiltered.length > 0) {
-        filtered = roleFiltered;
+      if (liveRealJobs.length > 0) {
+        rawJobs = liveRealJobs;
       }
+    } catch (realErr: any) {
+      console.warn('[GigSync] Direct external job query notice:', realErr.message);
     }
+  }
 
-    const locLower = ((location as string) || '').toLowerCase().trim();
-    if (locLower && locLower !== 'all' && locLower !== 'remote') {
-      const locTokens = locLower.split(/[\s,]+/).filter(t => t.length > 2);
-      const locFiltered = filtered.filter(j => {
-        const jLoc = j.location.toLowerCase();
-        return jLoc.includes('remote') || locTokens.some(t => jLoc.includes(t));
-      });
-      if (locFiltered.length > 0) {
-        filtered = locFiltered;
-      }
-    }
-
-    const modeStr = ((workMode as string) || '').trim();
-    if (modeStr && modeStr !== 'All') {
-      filtered = filtered.filter(j => j.workMode.toLowerCase() === modeStr.toLowerCase() || j.workMode === 'Remote');
-    }
-
-    const expStr = ((experienceLevel as string) || '').trim();
-    if (expStr && expStr !== 'All') {
-      filtered = filtered.filter(j => j.experienceLevel.toLowerCase() === expStr.toLowerCase());
-    }
-
-    rawJobs = filtered;
+  // 3. If no live vacancies matched the exact criteria, return honest empty results (no fabricated jobs)
+  if (!rawJobs) {
+    rawJobs = [];
   }
 
   // Cache the genuine jobs in liveJobStore and calculate honest match scores
@@ -562,7 +546,7 @@ app.get('/api/jobs', async (req: Request, res: Response) => {
 });
 
 app.get('/api/jobs/:id', async (req: Request, res: Response) => {
-  let job = liveJobStore.get(req.params.id) || SEEDED_JOB_LISTINGS.find((j: JobListing) => j.id === req.params.id);
+  let job = liveJobStore.get(req.params.id);
 
   if (!job) {
     try {

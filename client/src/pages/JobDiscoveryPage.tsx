@@ -48,6 +48,19 @@ export const JobDiscoveryPage: React.FC<JobDiscoveryPageProps> = ({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
 
+  // Sync defaultRole and defaultLocation from confirmed profile
+  useEffect(() => {
+    if (defaultRole && defaultRole !== roleTerm) {
+      setRoleTerm(defaultRole);
+    }
+  }, [defaultRole]);
+
+  useEffect(() => {
+    if (defaultLocation !== undefined && defaultLocation !== locationTerm) {
+      setLocationTerm(defaultLocation);
+    }
+  }, [defaultLocation]);
+
   // Sync external jobs
   useEffect(() => {
     if (jobs && jobs.length > 0) {
@@ -60,7 +73,7 @@ export const JobDiscoveryPage: React.FC<JobDiscoveryPageProps> = ({
     if ((!jobs || jobs.length === 0) && !hasSearched) {
       executeSearch(defaultRole, defaultLocation, workModeFilter, expLevelFilter);
     }
-  }, []);
+  }, [defaultRole, defaultLocation]);
 
   const executeSearch = async (
     role: string,

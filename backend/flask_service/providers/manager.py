@@ -13,11 +13,13 @@ try:
     from .adzuna_provider import AdzunaProvider
     from .themuse_provider import TheMuseProvider
     from .remotive_provider import RemotiveProvider
+    from .arbeitnow_provider import ArbeitnowProvider
 except ImportError:
     from base import BaseJobProvider, UnifiedJobListing
     from adzuna_provider import AdzunaProvider
     from themuse_provider import TheMuseProvider
     from remotive_provider import RemotiveProvider
+    from arbeitnow_provider import ArbeitnowProvider
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +30,8 @@ class JobProviderManager:
         self.providers: Dict[str, BaseJobProvider] = {
             "adzuna": AdzunaProvider(),
             "themuse": TheMuseProvider(),
-            "remotive": RemotiveProvider()
+            "remotive": RemotiveProvider(),
+            "arbeitnow": ArbeitnowProvider()
         }
         # In-memory LRU store for recently fetched job details (capacity: 500)
         self._job_cache: OrderedDict[str, UnifiedJobListing] = OrderedDict()
@@ -92,6 +95,9 @@ class JobProviderManager:
 
             # Add The Muse for US / Tech roles
             active_providers.append(self.providers["themuse"])
+
+            # Add Arbeitnow for EU / Remote / Global tech roles
+            active_providers.append(self.providers["arbeitnow"])
 
         errors = []
         for provider in active_providers:
