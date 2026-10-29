@@ -9,29 +9,55 @@ import {
   SavedJob,
   User
 } from '../types';
-import { parseResumeTextClient, createEmptyProfileClient } from './parserService';
+import { parseResumeTextClient } from './parserService';
 
-const API_BASE = '/api';
+// Resolve API base URL dynamically from Vite environment variables (VITE_API_URL / VITE_BACKEND_URL)
+// Defaults to relative '/api' for same-origin or proxy setups.
+const rawApiUrl = (
+  (typeof import.meta !== 'undefined' && import.meta.env && (import.meta.env.VITE_API_URL || import.meta.env.VITE_BACKEND_URL)) ||
+  ''
+).trim();
 
-// Helper for HTTP requests with graceful fallback
+export const API_BASE = rawApiUrl
+  ? (rawApiUrl.endsWith('/api') ? rawApiUrl.replace(/\/+$/, '') : `${rawApiUrl.replace(/\/+$/, '')}/api`)
+  : '/api';
+
+// Helper for HTTP requests with robust JSON and HTML misroute detection
 async function request<T>(endpoint: string, options?: RequestInit): Promise<T> {
+  const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+  const url = `${API_BASE}${cleanEndpoint}`;
+
   try {
-    const res = await fetch(`${API_BASE}${endpoint}`, {
+    const res = await fetch(url, {
       ...options,
       headers: {
         'Content-Type': 'application/json',
+        'Accept': 'application/json',
         ...(options?.headers || {})
       }
     });
 
+    const contentType = res.headers.get('content-type') || '';
+    if (contentType.includes('text/html')) {
+      throw new Error(
+        `API endpoint '${cleanEndpoint}' returned HTML instead of JSON. The request was likely misrouted to the frontend index page. Verify that the backend server is running and VITE_API_URL is configured correctly.`
+      );
+    }
+
     if (!res.ok) {
-      const errData = await res.json().catch(() => ({}));
-      throw new Error(errData.error || `Request failed with status ${res.status}`);
+      let errMsg = `Request to ${cleanEndpoint} failed with status ${res.status}`;
+      try {
+        const errData = await res.json();
+        if (errData && errData.error) errMsg = errData.error;
+      } catch {
+        // Response was not JSON
+      }
+      throw new Error(errMsg);
     }
 
     return await res.json();
-  } catch (err) {
-    console.warn(`[GigSync API] Call to ${endpoint} failed, checking fallback...`, err);
+  } catch (err: any) {
+    console.warn(`[GigSync API] Call to ${endpoint} failed:`, err.message);
     throw err;
   }
 }
@@ -55,7 +81,9 @@ export const api = {
   },
 
   async exportProfileData(): Promise<Blob> {
-    const res = await fetch(`${API_BASE}/profile/export`);
+    const res = await fetch(`${API_BASE}/profile/export`, {
+      headers: { 'Accept': 'application/json, text/plain, */*' }
+    });
     return await res.blob();
   },
 
@@ -68,12 +96,23 @@ export const api = {
     const formData = new FormData();
     formData.append('resume', file);
 
+    const uploadUrl = `${API_BASE}/parser/upload`;
+
     try {
-      const res = await fetch(`${API_BASE}/parser/upload`, {
+      const res = await fetch(uploadUrl, {
         method: 'POST',
+        headers: {
+          'Accept': 'application/json'
+          // CRITICAL: Do NOT manually set 'Content-Type': 'multipart/form-data'.
+          // The browser automatically sets Content-Type with boundary.
+        },
         body: formData
-        // Note: fetch automatically sets the correct multipart boundary header
       });
+
+      const contentType = res.headers.get('content-type') || '';
+      if (contentType.includes('text/html')) {
+        throw new Error(`Upload endpoint '${uploadUrl}' returned HTML instead of JSON. Ensure backend is running and VITE_API_URL is configured.`);
+      }
 
       if (res.ok) {
         const data = await res.json();
@@ -81,12 +120,11 @@ export const api = {
       }
 
       const errData = await res.json().catch(() => ({}));
-      console.warn('[GigSync] Backend upload failed:', errData.error || res.statusText);
       throw new Error(errData.error || `Server returned ${res.status}`);
     } catch (backendErr: any) {
-      console.info('[GigSync] Falling back to client-side document parser:', backendErr.message);
+      console.info('[GigSync] Backend upload unavailable or failed, attempting client-side document parser:', backendErr.message);
 
-      // Client-side fallback parsing
+      // Client-side fallback parsing (using properly initialized PDF.js worker)
       let extractedText = '';
       const nameLower = file.name.toLowerCase();
 
@@ -98,7 +136,8 @@ export const api = {
           extractedText = docxResult.value || '';
         } else if (nameLower.endsWith('.pdf')) {
           try {
-            const pdfjsLib = await import('pdfjs-dist');
+            // Import dedicated worker loader to ensure GlobalWorkerOptions.workerSrc is set
+            const { pdfjsLib } = await import('./pdfWorker');
             const arrayBuffer = await file.arrayBuffer();
             const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) });
             const pdfDoc = await loadingTask.promise;
@@ -110,20 +149,19 @@ export const api = {
               fullText += pageText + '\n';
             }
             extractedText = fullText;
-          } catch (pdfErr) {
+          } catch (pdfErr: any) {
             console.warn('[GigSync] Client PDF extraction error:', pdfErr);
-            extractedText = await file.text().catch(() => '');
+            throw new Error(`Client-side PDF text extraction failed: ${pdfErr?.message || 'Invalid or encrypted PDF'}. If this is a scanned document, OCR is required.`);
           }
         } else {
           extractedText = await file.text();
         }
-      } catch (extractErr) {
-        console.error('[GigSync] Document text extraction failed:', extractErr);
-        throw new Error('Failed to read document contents. Please check that the file is not corrupted.');
+      } catch (extractErr: any) {
+        throw new Error(extractErr.message || 'Failed to read document contents. Please check that the file is not corrupted.');
       }
 
       if (!extractedText || extractedText.trim().length === 0) {
-        throw new Error('Uploaded document appears empty or could not be decoded. Please verify file text or paste directly.');
+        throw new Error('Document contains no extractable text. If this is a scanned/image-only PDF, an OCR engine or backend multimodal extraction is required.');
       }
 
       return parseResumeTextClient(extractedText);
@@ -148,7 +186,7 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ userText, currentState })
     }).catch(() => {
-      // Graceful local assistant fallback
+      // Graceful local assistant fallback without hardcoded fake candidate profiles
       if (!currentState) {
         return {
           state: {
@@ -157,7 +195,7 @@ export const api = {
               id: 'local_welcome',
               sender: 'assistant',
               text: 'Welcome to the GigSync AI Resume Assistant. What is your full name and target engineering role?',
-              suggestedQuickReplies: ['Alex Morgan - Junior Full-Stack Developer', 'Jordan Lee - Backend Engineer']
+              suggestedQuickReplies: ['Software Engineer', 'Full-Stack Developer', 'Frontend Engineer', 'Data Scientist']
             }],
             draftProfile: {}
           },
@@ -165,7 +203,7 @@ export const api = {
             id: 'local_welcome',
             sender: 'assistant',
             text: 'Welcome to the GigSync AI Resume Assistant. What is your full name and target engineering role?',
-            suggestedQuickReplies: ['Alex Morgan - Junior Full-Stack Developer', 'Jordan Lee - Backend Engineer']
+            suggestedQuickReplies: ['Software Engineer', 'Full-Stack Developer', 'Frontend Engineer', 'Data Scientist']
           }
         };
       }

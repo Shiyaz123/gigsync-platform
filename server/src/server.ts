@@ -2,6 +2,12 @@ import express, { Request, Response } from 'express';
 import cors from 'cors';
 import multer from 'multer';
 import mammoth from 'mammoth';
+import fs from 'fs';
+import path from 'path';
+import os from 'os';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
+const execFileAsync = promisify(execFile);
 import {
   DEFAULT_GUEST_PROFILE,
   SEEDED_JOB_LISTINGS,
@@ -22,7 +28,13 @@ import {
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-app.use(cors());
+app.use(cors({
+  origin: '*',
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Session-ID', 'Accept'],
+  credentials: true
+}));
+app.options('*', cors());
 app.use(express.json({ limit: '10mb' }));
 
 const uploadStorage = multer.memoryStorage();
@@ -71,7 +83,8 @@ app.get('/api/health', (req: Request, res: Response) => {
 // --------------------------------------------------------------------------
 // Auth & User Profile (FR-01, FR-02, FR-03, FR-04)
 // --------------------------------------------------------------------------
-app.post('/api/auth/guest', (req: Request, res: Response) => {
+// Support both POST and GET for guest session initialization
+const handleGuestAuth = (req: Request, res: Response) => {
   res.json({
     user: {
       id: currentProfile.userId,
@@ -82,24 +95,45 @@ app.post('/api/auth/guest', (req: Request, res: Response) => {
     },
     profile: currentProfile
   });
-});
+};
+app.post('/api/auth/guest', handleGuestAuth);
+app.get('/api/auth/guest', handleGuestAuth);
 
 app.get('/api/profile', (req: Request, res: Response) => {
   res.json(currentProfile);
 });
 
-app.put('/api/profile', (req: Request, res: Response) => {
+// Support both PUT and POST for profile update
+const handleProfileUpdate = (req: Request, res: Response) => {
   const updated = req.body;
-  if (!updated || !updated.personalInfo) {
+  if (!updated) {
     return res.status(400).json({ error: 'Invalid profile data structure' });
   }
-  currentProfile = {
-    ...updated,
-    lastConfirmedAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
-  };
+
+  if (updated.personalInfo) {
+    currentProfile = {
+      ...updated,
+      lastConfirmedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+  } else {
+    // If flat format received
+    currentProfile.personalInfo.fullName = updated.full_name || updated.fullName || currentProfile.personalInfo.fullName;
+    currentProfile.personalInfo.email = updated.email || currentProfile.personalInfo.email;
+    currentProfile.personalInfo.phone = updated.phone || currentProfile.personalInfo.phone;
+    currentProfile.personalInfo.location = updated.location || currentProfile.personalInfo.location;
+    currentProfile.personalInfo.title = updated.target_role || updated.targetRole || currentProfile.personalInfo.title;
+    if (updated.skills && Array.isArray(updated.skills)) {
+      currentProfile.skills.technical = updated.skills;
+    }
+    currentProfile.lastConfirmedAt = new Date().toISOString();
+    currentProfile.updatedAt = new Date().toISOString();
+  }
+
   res.json({ success: true, profile: currentProfile });
-});
+};
+app.put('/api/profile', handleProfileUpdate);
+app.post('/api/profile', handleProfileUpdate);
 
 // Data Export & Deletion (FR-04, NFR-05)
 app.get('/api/profile/export', (req: Request, res: Response) => {
@@ -150,12 +184,133 @@ app.delete('/api/profile', (req: Request, res: Response) => {
 // --------------------------------------------------------------------------
 // Resume Parsing (FR-05, FR-06, FR-07, FR-12)
 // --------------------------------------------------------------------------
-app.post('/api/parser/upload', uploadMiddleware.single('resume'), async (req: Request, res: Response) => {
-  const file = req.file;
+const uploadFields = uploadMiddleware.fields([
+  { name: 'resume', maxCount: 1 },
+  { name: 'file', maxCount: 1 }
+]);
+
+app.post('/api/parser/upload', (req: Request, res: Response, next) => {
+  uploadFields(req, res, (err: any) => {
+    if (err) {
+      if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({ error: 'File size exceeds 10MB limit.' });
+      }
+      return res.status(400).json({ error: err.message || 'Error processing uploaded file.' });
+    }
+    next();
+  });
+}, async (req: Request, res: Response) => {
+  const files = req.files as { [fieldname: string]: Express.Multer.File[] } | undefined;
+  const file = files?.resume?.[0] || files?.file?.[0] || (req as any).file;
   if (!file) {
-    return res.status(400).json({ error: 'No resume file uploaded. Please select a PDF, DOCX, or TXT file.' });
+    return res.status(400).json({ error: 'No resume file uploaded. Please select a PDF, DOCX, or TXT file using field "resume" or "file".' });
   }
 
+  // 1. First, attempt Python PyMuPDF (fitz) + python-docx + Gemini extraction
+  const tempDir = os.tmpdir();
+  const safeBase = path.basename(file.originalname).replace(/[^a-zA-Z0-9.-]/g, '_');
+  const tempFilePath = path.join(tempDir, `gigsync_${Date.now()}_${safeBase}`);
+
+  try {
+    await fs.promises.writeFile(tempFilePath, file.buffer);
+    const cliScript = path.resolve(__dirname, '../../backend/parse_cli.py');
+
+    if (fs.existsSync(cliScript)) {
+      try {
+        const { stdout } = await execFileAsync('py', [cliScript, tempFilePath], {
+          timeout: 30000,
+          env: { ...process.env }
+        });
+
+        const pyResult = JSON.parse(stdout.trim());
+        if (pyResult.success && pyResult.extracted_profile) {
+          const p = pyResult.extracted_profile;
+          const extractedProfile: CandidateProfile = {
+            userId: 'usr_parsed_' + Date.now(),
+            personalInfo: {
+              fullName: p.full_name || '',
+              email: p.email || '',
+              phone: p.phone || '',
+              location: p.location || '',
+              title: p.target_role || '',
+              summary: ''
+            },
+            education: (p.education || []).map((e: any, idx: number) => ({
+              id: `edu_parsed_${idx + 1}`,
+              institution: e.institution || '',
+              degree: e.degree || '',
+              fieldOfStudy: e.field_of_study || '',
+              startDate: e.start_date || '',
+              endDate: e.end_date || '',
+              gpa: e.gpa || undefined,
+              confirmed: false
+            })),
+            skills: {
+              technical: p.skills || [],
+              frameworks: [],
+              tools: [],
+              soft: []
+            },
+            experience: (p.experience || []).map((e: any, idx: number) => ({
+              id: `exp_parsed_${idx + 1}`,
+              company: e.company || '',
+              role: e.role || '',
+              location: e.location || '',
+              startDate: e.start_date || '',
+              endDate: e.end_date || '',
+              current: false,
+              bullets: e.bullets || [],
+              confirmed: false
+            })),
+            projects: (p.projects || []).map((proj: any, idx: number) => ({
+              id: `proj_parsed_${idx + 1}`,
+              title: proj.title || '',
+              techStack: proj.tech_stack || [],
+              description: proj.description || '',
+              bullets: proj.bullets || [],
+              confirmed: false
+            })),
+            certifications: (p.certifications || []).map((c: any, idx: number) => ({
+              id: `cert_parsed_${idx + 1}`,
+              name: c.name || '',
+              issuer: c.issuer || '',
+              issueDate: c.issue_date || '',
+              confirmed: false
+            })),
+            careerPreferences: {
+              targetRoles: p.target_role ? [p.target_role] : [],
+              workModes: ['Remote', 'Hybrid'],
+              targetLocations: p.location ? [p.location] : []
+            },
+            confirmedFactsOnly: true,
+            lastConfirmedAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          };
+
+          currentProfile = JSON.parse(JSON.stringify(extractedProfile));
+
+          return res.json({
+            success: true,
+            fileName: file.originalname,
+            fileSize: file.size,
+            extractedProfile,
+            extracted_profile: p,
+            confidenceScore: pyResult.confidence_score,
+            warnings: pyResult.warnings || [],
+            sourceMethod: pyResult.source_method || 'pymupdf_python_parser'
+          });
+        }
+      } catch (pyRunErr) {
+        console.warn('[GigSync] Python PyMuPDF subprocess error, invoking resilient Node parser:', pyRunErr);
+      }
+    }
+  } catch (fsErr) {
+    console.warn('[GigSync] Temp file error:', fsErr);
+  } finally {
+    await fs.promises.unlink(tempFilePath).catch(() => {});
+  }
+
+  // 2. Resilient Node Parser Fallback (strictly NEVER decoding binary PDF buffers as strings)
   try {
     let extractedText = '';
     const nameLower = file.originalname.toLowerCase();
@@ -175,9 +330,10 @@ app.post('/api/parser/upload', uploadMiddleware.single('resume'), async (req: Re
         }
         extractedText = fullText;
       } catch (pdfErr) {
-        console.warn('PDF parsing error, attempting string stream extraction fallback:', pdfErr);
-        // Fallback plain string stream extraction for simple textual PDFs
-        extractedText = file.buffer.toString('binary').replace(/[^\x20-\x7E\r\n]/g, ' ');
+        console.warn('[GigSync] PDF text extraction failed:', pdfErr);
+        return res.status(400).json({
+          error: 'Could not extract readable text from PDF. If this is a scanned document, please paste the plain text directly.'
+        });
       }
     } else if (nameLower.endsWith('.docx') || file.mimetype.includes('wordprocessingml')) {
       const docxResult = await mammoth.extractRawText({ buffer: file.buffer });
@@ -193,11 +349,14 @@ app.post('/api/parser/upload', uploadMiddleware.single('resume'), async (req: Re
     }
 
     const parsedResult = parseResumeText(extractedText);
+    currentProfile = JSON.parse(JSON.stringify(parsedResult.extractedProfile));
+
     return res.json({
       success: true,
       fileName: file.originalname,
       fileSize: file.size,
-      ...parsedResult
+      ...parsedResult,
+      sourceMethod: 'nodejs_resilient_parser'
     });
   } catch (err: any) {
     console.error('File parsing error:', err);
@@ -218,8 +377,25 @@ app.post('/api/parser/parse', (req: Request, res: Response) => {
 // --------------------------------------------------------------------------
 // Conversational AI Resume Assistant (Option B)
 // --------------------------------------------------------------------------
+app.get('/api/ai/resume-assistant', (req: Request, res: Response) => {
+  const initialState: AssistantState = {
+    currentStep: 'intro',
+    history: [
+      {
+        id: 'welcome_1',
+        sender: 'assistant',
+        text: 'Welcome to the GigSync AI Resume Assistant. I will guide you through turning your existing projects, coursework, and experience into a structured, truthful profile. What is your full name and target engineering role?',
+        step: 'intro',
+        suggestedQuickReplies: ['Software Engineer', 'Full-Stack Developer', 'Frontend Engineer', 'Data Scientist']
+      }
+    ],
+    draftProfile: {}
+  };
+  res.json({ state: initialState, reply: initialState.history[0] });
+});
+
 app.post('/api/ai/resume-assistant', (req: Request, res: Response) => {
-  const { userText, currentState } = req.body;
+  const { userText, currentState } = req.body || {};
   if (!currentState) {
     const initialState: AssistantState = {
       currentStep: 'intro',
@@ -229,7 +405,7 @@ app.post('/api/ai/resume-assistant', (req: Request, res: Response) => {
           sender: 'assistant',
           text: 'Welcome to the GigSync AI Resume Assistant. I will guide you through turning your existing projects, coursework, and experience into a structured, truthful profile. What is your full name and target engineering role?',
           step: 'intro',
-          suggestedQuickReplies: ['Alex Morgan - Full-Stack Developer', 'Jordan Lee - Junior Backend Engineer']
+          suggestedQuickReplies: ['Software Engineer', 'Full-Stack Developer', 'Frontend Engineer', 'Data Scientist']
         }
       ],
       draftProfile: {}
@@ -563,7 +739,16 @@ app.delete('/api/saved-jobs/:id', (req: Request, res: Response) => {
   res.json({ success: true });
 });
 
-// Start Server
-app.listen(PORT, () => {
-  console.log(`[GigSync] API server listening on http://localhost:${PORT}`);
+// Catch-all 404 handler for any unhandled /api/* routes ensuring clean JSON response
+app.all('/api/*', (req: Request, res: Response) => {
+  res.status(404).json({ error: `Route '${req.method} ${req.path}' not found on API server.` });
 });
+
+// Start Server when run directly
+if (process.env.NODE_ENV !== 'test' && !process.env.VERCEL) {
+  app.listen(PORT, () => {
+    console.log(`[GigSync] API server listening on http://localhost:${PORT}`);
+  });
+}
+
+export default app;

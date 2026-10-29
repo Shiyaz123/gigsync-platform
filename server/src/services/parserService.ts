@@ -61,9 +61,12 @@ export function parseResumeText(rawText: string): ParsedResumeResult {
   // Inspect the first 5 non-empty lines for candidate name
   for (let i = 0; i < Math.min(5, lines.length); i++) {
     const line = lines[i];
-    // Exclude header tokens, emails, phone numbers, and URLs
+    // Exclude header tokens, emails, phone numbers, URLs, and PDF binary headers (%PDF-1.5)
     if (
       line.includes('@') ||
+      line.includes('%PDF') ||
+      line.startsWith('%') ||
+      line.includes('\0') ||
       phoneRegex.test(line) ||
       /github\.com|linkedin\.com|https?:|www\./i.test(line) ||
       /^(resume|curriculum|vitae|cv|profile|contact|summary|objective)/i.test(line) ||
@@ -88,8 +91,15 @@ export function parseResumeText(rawText: string): ParsedResumeResult {
   if (fullName) {
     flags.push({ field: 'fullName', confidence: 0.9, needsReview: false });
   } else {
-    // If not cleanly found in first lines, look at first line
-    if (lines.length > 0 && lines[0].length < 35 && !lines[0].includes('@')) {
+    // If not cleanly found in first lines, look at first line (strictly rejecting %PDF)
+    if (
+      lines.length > 0 &&
+      lines[0].length < 35 &&
+      !lines[0].includes('@') &&
+      !lines[0].includes('%PDF') &&
+      !lines[0].startsWith('%') &&
+      !lines[0].includes('\0')
+    ) {
       fullName = lines[0];
       flags.push({ field: 'fullName', confidence: 0.6, needsReview: true, reason: 'Please confirm candidate full name.' });
     } else {

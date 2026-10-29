@@ -36,3 +36,7 @@ yarn-error.log*
 Thumbs.db
 
 .vercel
+*.sqlite3
+__pycache__/
+*.pyc
+*.docx
