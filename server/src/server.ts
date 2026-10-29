@@ -8,6 +8,7 @@ import {
 import { calculateJobMatch } from './services/matchingEngine';
 import { generateLatexResume } from './services/latexService';
 import { parseResumeText } from './services/parserService';
+import { processAssistantTurn, AssistantState } from './services/aiAssistantService';
 import {
   CandidateProfile,
   JobListing,
@@ -149,6 +150,32 @@ app.post('/api/parser/parse', (req: Request, res: Response) => {
 
   const result = parseResumeText(text);
   res.json(result);
+});
+
+// --------------------------------------------------------------------------
+// Conversational AI Resume Assistant (Option B)
+// --------------------------------------------------------------------------
+app.post('/api/ai/resume-assistant', (req: Request, res: Response) => {
+  const { userText, currentState } = req.body;
+  if (!currentState) {
+    const initialState: AssistantState = {
+      currentStep: 'intro',
+      history: [
+        {
+          id: 'welcome_1',
+          sender: 'assistant',
+          text: 'Welcome to the GigSync AI Resume Assistant. I will guide you through turning your existing projects, coursework, and experience into a structured, truthful profile. What is your full name and target engineering role?',
+          step: 'intro',
+          suggestedQuickReplies: ['Alex Morgan - Full-Stack Developer', 'Jordan Lee - Junior Backend Engineer']
+        }
+      ],
+      draftProfile: {}
+    };
+    return res.json({ state: initialState, reply: initialState.history[0] });
+  }
+
+  const result = processAssistantTurn(userText || '', currentState);
+  res.json({ state: result.nextState, reply: result.reply });
 });
 
 // --------------------------------------------------------------------------

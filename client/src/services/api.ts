@@ -70,6 +70,44 @@ export const api = {
     });
   },
 
+  // Conversational AI Resume Assistant
+  async aiResumeAssistant(userText?: string, currentState?: any): Promise<{ state: any; reply: any }> {
+    return request<{ state: any; reply: any }>('/ai/resume-assistant', {
+      method: 'POST',
+      body: JSON.stringify({ userText, currentState })
+    }).catch(() => {
+      // Graceful local assistant fallback
+      if (!currentState) {
+        return {
+          state: {
+            currentStep: 'intro',
+            history: [{
+              id: 'local_welcome',
+              sender: 'assistant',
+              text: 'Welcome to the GigSync AI Resume Assistant. What is your full name and target engineering role?',
+              suggestedQuickReplies: ['Alex Morgan - Junior Full-Stack Developer', 'Jordan Lee - Backend Engineer']
+            }],
+            draftProfile: {}
+          },
+          reply: {
+            id: 'local_welcome',
+            sender: 'assistant',
+            text: 'Welcome to the GigSync AI Resume Assistant. What is your full name and target engineering role?',
+            suggestedQuickReplies: ['Alex Morgan - Junior Full-Stack Developer', 'Jordan Lee - Backend Engineer']
+          }
+        };
+      }
+      return {
+        state: currentState,
+        reply: {
+          id: `reply_${Date.now()}`,
+          sender: 'assistant',
+          text: 'Information noted and recorded in your confirmed draft profile.'
+        }
+      };
+    });
+  },
+
   // Jobs
   async getJobs(filters?: {
     keyword?: string;

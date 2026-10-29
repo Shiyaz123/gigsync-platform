@@ -8,15 +8,17 @@ import {
 import { api } from './services/api';
 import { Navbar } from './components/Navbar';
 import { ToastContainer, ToastMessage } from './components/Toast';
+import { LandingPage } from './pages/LandingPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { ProfilePage } from './pages/ProfilePage';
 import { ResumeStudioPage } from './pages/ResumeStudioPage';
+import { AiResumeAssistantPage } from './pages/AiResumeAssistantPage';
 import { JobDiscoveryPage } from './pages/JobDiscoveryPage';
 import { JobDetailPage } from './pages/JobDetailPage';
 import { LearningRoadmapPage } from './pages/LearningRoadmapPage';
+import { HowItWorksPage } from './pages/HowItWorksPage';
 import { SettingsPrivacyPage } from './pages/SettingsPrivacyPage';
 
-// Default starter profile in case of fresh launch
 const INITIAL_PROFILE: CandidateProfile = {
   userId: 'usr_guest_demo',
   personalInfo: {
@@ -119,8 +121,7 @@ const INITIAL_PROFILE: CandidateProfile = {
 };
 
 export const App: React.FC = () => {
-  const [currentTab, setCurrentTab] = useState<string>('dashboard');
-  const [theme, setTheme] = useState<'dark' | 'light'>('dark');
+  const [currentTab, setCurrentTab] = useState<string>('landing');
   const [profile, setProfile] = useState<CandidateProfile>(INITIAL_PROFILE);
   const [jobs, setJobs] = useState<JobListing[]>([]);
   const [savedJobs, setSavedJobs] = useState<SavedJob[]>([]);
@@ -128,37 +129,27 @@ export const App: React.FC = () => {
   const [selectedJobId, setSelectedJobId] = useState<string>('');
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
-  // Apply theme to document root
-  useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme);
-  }, [theme]);
-
-  // Initial Data Fetch
   useEffect(() => {
     initializeData();
   }, []);
 
   const initializeData = async () => {
     try {
-      // Load guest session / profile
       const authData = await api.getGuestSession().catch(() => null);
       if (authData?.profile) {
         setProfile(authData.profile);
       }
 
-      // Load jobs
       const jobsData = await api.getJobs().catch(() => []);
       setJobs(jobsData);
 
-      // Load saved jobs
       const saved = await api.getSavedJobs().catch(() => []);
       setSavedJobs(saved);
 
-      // Load roadmap
       const rd = await api.getRoadmap().catch(() => null);
       setRoadmap(rd);
     } catch (err) {
-      console.warn('Backend loading in progress, operating in resilient mode.', err);
+      console.warn('Operating in resilient mode.', err);
     }
   };
 
@@ -174,10 +165,6 @@ export const App: React.FC = () => {
     setToasts(prev => prev.filter(t => t.id !== id));
   };
 
-  const toggleTheme = () => {
-    setTheme(prev => prev === 'dark' ? 'light' : 'dark');
-  };
-
   const handleResetDemo = () => {
     setProfile(JSON.parse(JSON.stringify(INITIAL_PROFILE)));
     api.updateProfile(INITIAL_PROFILE).catch(() => {});
@@ -190,14 +177,14 @@ export const App: React.FC = () => {
       if (isAlreadySaved) {
         await api.removeSavedJob(jobId);
         setSavedJobs(prev => prev.filter(sj => sj.jobId !== jobId));
-        showToast('Job Removed', 'Removed from your saved pipeline.', 'info');
+        showToast('Job Removed', 'Removed from saved pipeline.', 'info');
       } else {
         const saved = await api.saveJob(jobId, 'interested');
         setSavedJobs(prev => [saved, ...prev]);
-        showToast('Job Saved!', 'Added to your application pipeline.', 'success');
+        showToast('Job Saved', 'Added to your tracked pipeline.', 'success');
       }
     } catch (err: any) {
-      showToast('Action Failed', err.message || 'Could not update saved job.', 'error');
+      showToast('Error', err.message || 'Could not update saved job.', 'error');
     }
   };
 
@@ -210,19 +197,24 @@ export const App: React.FC = () => {
   };
 
   return (
-    <div className="app-container">
-      {/* Top Sticky Navigation */}
+    <div className="min-h-screen flex flex-col bg-[#F5F3EE] text-[#20251F]">
+      {/* Sticky Editorial Navbar */}
       <Navbar
         currentTab={currentTab}
         setCurrentTab={setCurrentTab}
-        theme={theme}
-        toggleTheme={toggleTheme}
         isGuest={true}
         onResetDemo={handleResetDemo}
       />
 
-      {/* Main Content Area */}
-      <main className="main-content">
+      {/* Main Container */}
+      <main className="flex-1 max-w-[1340px] w-full mx-auto px-6 py-8">
+        {currentTab === 'landing' && (
+          <LandingPage
+            profile={profile}
+            onNavigate={handleNavigate}
+          />
+        )}
+
         {currentTab === 'dashboard' && (
           <DashboardPage
             profile={profile}
@@ -233,24 +225,36 @@ export const App: React.FC = () => {
           />
         )}
 
-        {currentTab === 'profile' && (
-          <ProfilePage
-            profile={profile}
-            onUpdateProfile={(updated) => {
-              setProfile(updated);
-              // Refresh job match scores with updated profile
-              api.getJobs().then(setJobs).catch(() => {});
-            }}
-            showToast={showToast}
-          />
-        )}
-
         {currentTab === 'resume' && (
           <ResumeStudioPage
             profile={profile}
             jobs={jobs}
             targetJobId={selectedJobId}
             showToast={showToast}
+          />
+        )}
+
+        {currentTab === 'ai-assistant' && (
+          <AiResumeAssistantPage
+            profile={profile}
+            onApplyProfile={(updated) => {
+              setProfile(updated);
+              api.getJobs().then(setJobs).catch(() => {});
+            }}
+            onNavigate={handleNavigate}
+            showToast={showToast}
+          />
+        )}
+
+        {currentTab === 'profile' && (
+          <ProfilePage
+            profile={profile}
+            onUpdateProfile={(updated) => {
+              setProfile(updated);
+              api.getJobs().then(setJobs).catch(() => {});
+            }}
+            showToast={showToast}
+            onNavigateToAssistant={() => setCurrentTab('ai-assistant')}
           />
         )}
 
@@ -284,6 +288,18 @@ export const App: React.FC = () => {
             }}
             isSaved={savedJobs.some(sj => sj.jobId === selectedJobId)}
             onToggleSave={handleToggleSaveJob}
+            onConfirmSkill={(skill) => {
+              const updated = {
+                ...profile,
+                skills: {
+                  ...profile.skills,
+                  technical: Array.from(new Set([...profile.skills.technical, skill]))
+                }
+              };
+              setProfile(updated);
+              api.updateProfile(updated).catch(() => {});
+              showToast('Skill Confirmed', `Added ${skill} to your confirmed profile skills.`, 'success');
+            }}
           />
         )}
 
@@ -301,6 +317,10 @@ export const App: React.FC = () => {
           />
         )}
 
+        {currentTab === 'how-it-works' && (
+          <HowItWorksPage onNavigate={handleNavigate} />
+        )}
+
         {currentTab === 'settings' && (
           <SettingsPrivacyPage
             onDataReset={() => {
@@ -313,7 +333,24 @@ export const App: React.FC = () => {
         )}
       </main>
 
-      {/* Toast Notification Container */}
+      {/* Editorial Footer */}
+      <footer className="border-t border-[#D5D5CC] bg-[#E8E7DF] py-8 no-print">
+        <div className="max-w-[1340px] mx-auto px-6 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs font-mono text-[#686C63]">
+          <div>
+            <span className="font-serif text-sm font-semibold text-[#20251F]">GigSync</span> • AI-Powered Career Preparation & Job Matching Platform
+          </div>
+          <div className="flex items-center gap-4">
+            <button onClick={() => setCurrentTab('how-it-works')} className="hover:text-[#20251F] underline">
+              Architecture & Algorithm
+            </button>
+            <button onClick={() => setCurrentTab('settings')} className="hover:text-[#20251F] underline">
+              Privacy & Safeguards
+            </button>
+          </div>
+        </div>
+      </footer>
+
+      {/* Toast Feedback */}
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />
     </div>
   );

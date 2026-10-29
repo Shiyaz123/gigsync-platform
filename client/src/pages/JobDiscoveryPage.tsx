@@ -5,10 +5,8 @@ import {
 } from '../types';
 import {
   Search,
-  Filter,
   MapPin,
   Briefcase,
-  DollarSign,
   Bookmark,
   BookmarkCheck,
   ExternalLink,
@@ -54,123 +52,121 @@ export const JobDiscoveryPage: React.FC<JobDiscoveryPageProps> = ({
   const isJobSaved = (jobId: string) => savedJobs.some(sj => sj.jobId === jobId);
 
   return (
-    <div className="job-discovery-page">
-      {/* Page Header */}
-      <div style={{ marginBottom: '1.5rem' }}>
-        <h1 style={{ fontSize: '1.8rem', fontWeight: 800, letterSpacing: '-0.02em', display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-          <Briefcase size={28} color="#6366f1" />
-          Job Discovery & Match Relevance
-        </h1>
-        <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
-          Explore verified entry-level and junior software roles. Transparent match scores explain evidence and missing requirements.
-        </p>
+    <div className="job-discovery-page space-y-8 pb-16">
+      {/* Editorial Header */}
+      <div className="pb-4 border-b border-[#D5D5CC]">
+        <div className="flex items-baseline justify-between flex-wrap gap-4">
+          <div>
+            <span className="section-num">Workflow Step 03 / Job Matching</span>
+            <h1 className="font-serif text-4xl sm:text-5xl text-[#20251F] mt-1">
+              Find Jobs for Me
+            </h1>
+            <p className="text-sm text-[#686C63] mt-1">
+              Relevance scores reflect verified evidence alignment from your confirmed profile. Not presented as hiring probabilities.
+            </p>
+          </div>
+          <span className="tag-mono text-[#686C63]">
+            {filteredJobs.length} verified listings available
+          </span>
+        </div>
       </div>
 
-      {/* Filter and Search Bar */}
-      <div className="card" style={{ marginBottom: '1.75rem', padding: '1.25rem' }}>
-        <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
+      {/* Editorial Filter Bar */}
+      <div className="surface-card p-4 space-y-3">
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
           {/* Search Input */}
-          <div style={{ flex: 1, minWidth: '260px', position: 'relative' }}>
-            <Search size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+          <div className="md:col-span-5 relative">
+            <Search size={16} strokeWidth={1.5} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#686C63]" />
             <input
-              className="form-input"
-              style={{ paddingLeft: '2.5rem' }}
+              className="input-editorial pl-9 text-xs sm:text-sm"
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
-              placeholder="Search by title, company, or skill (e.g. React, Python, Docker)..."
+              placeholder="Filter by title, company, or skill (e.g. React, Python, Docker)..."
             />
           </div>
 
           {/* Work Mode Filter */}
-          <select
-            className="form-select"
-            style={{ width: 'auto', minWidth: '130px' }}
-            value={workModeFilter}
-            onChange={e => setWorkModeFilter(e.target.value)}
-          >
-            <option value="All">All Work Modes</option>
-            <option value="Remote">Remote</option>
-            <option value="Hybrid">Hybrid</option>
-            <option value="On-site">On-site</option>
-          </select>
+          <div className="md:col-span-2">
+            <select
+              className="input-editorial text-xs"
+              value={workModeFilter}
+              onChange={e => setWorkModeFilter(e.target.value)}
+            >
+              <option value="All">All Work Modes</option>
+              <option value="Remote">Remote</option>
+              <option value="Hybrid">Hybrid</option>
+              <option value="On-site">On-site</option>
+            </select>
+          </div>
 
           {/* Experience Level Filter */}
-          <select
-            className="form-select"
-            style={{ width: 'auto', minWidth: '140px' }}
-            value={expLevelFilter}
-            onChange={e => setExpLevelFilter(e.target.value)}
-          >
-            <option value="All">All Levels</option>
-            <option value="Entry-level">Entry-level</option>
-            <option value="Junior">Junior</option>
-            <option value="Internship">Internship</option>
-          </select>
+          <div className="md:col-span-2">
+            <select
+              className="input-editorial text-xs"
+              value={expLevelFilter}
+              onChange={e => setExpLevelFilter(e.target.value)}
+            >
+              <option value="All">All Experience Levels</option>
+              <option value="Entry-level">Entry-level</option>
+              <option value="Junior">Junior</option>
+              <option value="Internship">Internship</option>
+            </select>
+          </div>
 
           {/* Source Filter */}
-          <select
-            className="form-select"
-            style={{ width: 'auto', minWidth: '130px' }}
-            value={sourceFilter}
-            onChange={e => setSourceFilter(e.target.value)}
-          >
-            <option value="All">All Sources</option>
-            <option value="LinkedIn">LinkedIn</option>
-            <option value="Indeed">Indeed</option>
-            <option value="Handshake">Handshake</option>
-            <option value="Company Direct">Company Direct</option>
-          </select>
+          <div className="md:col-span-2">
+            <select
+              className="input-editorial text-xs"
+              value={sourceFilter}
+              onChange={e => setSourceFilter(e.target.value)}
+            >
+              <option value="All">All Sources</option>
+              <option value="LinkedIn">LinkedIn</option>
+              <option value="Indeed">Indeed</option>
+              <option value="Handshake">Handshake</option>
+              <option value="Company Direct">Company Direct</option>
+            </select>
+          </div>
 
-          {(searchTerm || workModeFilter !== 'All' || expLevelFilter !== 'All' || sourceFilter !== 'All') && (
+          {/* Reset button */}
+          <div className="md:col-span-1">
             <button
-              className="btn btn-outline btn-sm"
               onClick={() => {
                 setSearchTerm('');
                 setWorkModeFilter('All');
                 setExpLevelFilter('All');
                 setSourceFilter('All');
               }}
+              className="btn-editorial btn-editorial-outline w-full text-xs py-2 px-1"
             >
-              Reset Filters
+              Reset
             </button>
-          )}
+          </div>
         </div>
-      </div>
-
-      {/* Results Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-        <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>
-          Showing <strong>{filteredJobs.length}</strong> verified job opportunities
-        </span>
-        <span style={{ fontSize: '0.8rem', color: 'var(--text-subtle)' }}>
-          Scores indicate profile evidence alignment, not hiring guarantees
-        </span>
       </div>
 
       {/* Job Cards List */}
       {filteredJobs.length === 0 ? (
-        <div className="card" style={{ textAlign: 'center', padding: '3.5rem 1.5rem', color: 'var(--text-muted)' }}>
-          <Inbox size={48} style={{ margin: '0 auto 1rem', opacity: 0.4 }} />
-          <h3 style={{ fontSize: '1.2rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: '0.5rem' }}>
-            No Matching Job Listings
-          </h3>
-          <p style={{ maxWidth: '400px', margin: '0 auto 1.5rem', fontSize: '0.9rem' }}>
-            No seeded records match your current filter criteria. We avoid displaying fabricated records.
+        <div className="surface-card p-12 text-center space-y-3">
+          <Inbox size={36} strokeWidth={1.5} className="mx-auto text-[#686C63]" />
+          <h3 className="font-serif text-2xl text-[#20251F]">No Matching Job Listings Found</h3>
+          <p className="text-xs text-[#686C63] max-w-md mx-auto">
+            No verified job records match your current filter parameters. We strictly avoid displaying fabricated fallback data.
           </p>
           <button
-            className="btn btn-secondary btn-sm"
             onClick={() => {
               setSearchTerm('');
               setWorkModeFilter('All');
               setExpLevelFilter('All');
               setSourceFilter('All');
             }}
+            className="btn-editorial btn-editorial-secondary text-xs px-4 py-2 mt-2"
           >
-            Clear Filters
+            Clear Search Filters
           </button>
         </div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+        <div className="space-y-4">
           {filteredJobs.map(job => {
             const saved = isJobSaved(job.id);
             const score = job.matchScore || 75;
@@ -178,94 +174,103 @@ export const JobDiscoveryPage: React.FC<JobDiscoveryPageProps> = ({
             return (
               <div
                 key={job.id}
-                className="card card-interactive"
-                style={{ padding: '1.5rem' }}
                 onClick={() => onSelectJob(job.id)}
+                className="surface-card p-6 space-y-4 cursor-pointer hover:border-[#20251F] transition-colors"
               >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem', marginBottom: '0.75rem' }}>
-                  <div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.35rem' }}>
-                      <h2 style={{ fontSize: '1.25rem', fontWeight: 800 }}>{job.title}</h2>
+                <div className="flex items-start justify-between flex-wrap gap-4">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <h2 className="font-serif text-2xl text-[#20251F] hover:text-[#D9534F] transition-colors">
+                        {job.title}
+                      </h2>
                       {job.verified && (
-                        <span className="badge badge-success" title="Verified source listing">
-                          <ShieldCheck size={12} /> Verified
+                        <span className="tag-mono text-[11px] text-[#686C63] flex items-center gap-1">
+                          <ShieldCheck size={11} strokeWidth={1.5} /> Verified
                         </span>
                       )}
                     </div>
-                    <div style={{ fontSize: '0.95rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-                      <span style={{ fontWeight: 600, color: 'var(--text-main)' }}>{job.company}</span>
+
+                    <div className="text-xs text-[#686C63] flex items-center gap-2 flex-wrap">
+                      <span className="font-semibold text-[#20251F]">{job.company}</span>
                       <span>•</span>
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
-                        <MapPin size={14} /> {job.location}
-                      </span>
+                      <span>{job.location}</span>
                       <span>•</span>
-                      <span className="badge badge-primary">{job.workMode}</span>
-                      <span className="badge" style={{ background: 'var(--bg-elevated)' }}>{job.experienceLevel}</span>
+                      <span className="tag-mono text-[11px]">{job.workMode}</span>
+                      <span className="tag-mono text-[11px]">{job.experienceLevel}</span>
+                      {job.salaryRange && (
+                        <>
+                          <span>•</span>
+                          <span className="font-mono text-[#20251F] font-semibold">{job.salaryRange}</span>
+                        </>
+                      )}
                     </div>
                   </div>
 
                   {/* Match Score & Bookmark */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                    <div className={`match-score-badge ${
-                      score >= 80 ? 'match-high' :
-                      score >= 65 ? 'match-medium' : 'match-low'
-                    }`}>
-                      <Sparkles size={14} />
-                      {score}% Relevance
+                  <div className="flex items-center gap-3 shrink-0">
+                    <div className="text-right">
+                      <div className="font-mono text-xl font-bold text-[#20251F]">
+                        {score}%
+                      </div>
+                      <div className="text-[10px] font-mono text-[#686C63] uppercase">
+                        Evidence Match
+                      </div>
                     </div>
 
                     <button
-                      className="btn-icon"
-                      title={saved ? 'Remove from saved' : 'Save job'}
-                      onClick={(e) => {
+                      onClick={e => {
                         e.stopPropagation();
                         onToggleSaveJob(job.id);
                       }}
+                      className={`p-2 border rounded-[2px] transition-colors ${
+                        saved
+                          ? 'border-[#D9534F] text-[#D9534F] bg-[#E8E7DF]'
+                          : 'border-[#D5D5CC] text-[#686C63] hover:text-[#20251F]'
+                      }`}
+                      title={saved ? 'Remove from saved' : 'Save job'}
                     >
-                      {saved ? <BookmarkCheck size={18} color="#10b981" /> : <Bookmark size={18} />}
+                      {saved ? <BookmarkCheck size={16} strokeWidth={1.5} /> : <Bookmark size={16} strokeWidth={1.5} />}
                     </button>
                   </div>
                 </div>
 
-                {/* Salary & Description snippet */}
-                <div style={{ fontSize: '0.88rem', color: 'var(--text-muted)', marginBottom: '1rem', lineHeight: 1.5 }}>
+                {/* Description snippet */}
+                <p className="text-xs text-[#686C63] leading-relaxed line-clamp-2">
                   {job.description}
+                </p>
+
+                {/* Match Rationale / Evidence callout */}
+                <div className="bg-[#F5F3EE] p-2.5 border border-[#D5D5CC] rounded-[2px] text-xs text-[#686C63] flex items-center justify-between gap-4">
+                  <div>
+                    <strong className="text-[#20251F]">Why this matches:</strong> {job.matchSummary || 'Aligns with confirmed technical skills.'}
+                  </div>
+                  <span className="font-mono text-[11px] text-[#20251F] shrink-0 flex items-center gap-1 font-semibold">
+                    Review Skill Gaps <ArrowRight size={12} strokeWidth={1.5} />
+                  </span>
                 </div>
 
-                {/* Skills tags */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border-card)' }}>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', alignItems: 'center' }}>
-                    <span style={{ fontSize: '0.78rem', color: 'var(--text-subtle)', fontWeight: 600 }}>Essential:</span>
+                {/* Essential Skills & Actions footer */}
+                <div className="pt-2 border-t border-[#D5D5CC] flex items-center justify-between flex-wrap gap-4 text-xs">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="font-mono text-[11px] text-[#686C63] uppercase font-semibold">Essential:</span>
                     {job.requirements.essentialSkills.map(skill => (
-                      <span key={skill} className="badge badge-primary">
+                      <span key={skill} className="tag-mono text-[11px] bg-[#E8E7DF] text-[#20251F]">
                         {skill}
                       </span>
                     ))}
-                    {job.requirements.preferredSkills.length > 0 && (
-                      <>
-                        <span style={{ fontSize: '0.78rem', color: 'var(--text-subtle)', fontWeight: 600, marginLeft: '6px' }}>Preferred:</span>
-                        {job.requirements.preferredSkills.slice(0, 2).map(skill => (
-                          <span key={skill} className="badge" style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)' }}>
-                            {skill}
-                          </span>
-                        ))}
-                      </>
-                    )}
                   </div>
 
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                    <span style={{ fontSize: '0.8rem', color: 'var(--text-subtle)' }}>
-                      Source: {job.source}
-                    </span>
-                    <button
-                      className="btn btn-outline btn-sm"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onSelectJob(job.id);
-                      }}
+                  <div className="flex items-center gap-3 text-xs text-[#686C63]">
+                    <span>Source: {job.source}</span>
+                    <a
+                      href={job.applyUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      onClick={e => e.stopPropagation()}
+                      className="text-[#20251F] font-semibold hover:underline inline-flex items-center gap-1"
                     >
-                      Explain Fit & Gaps <ArrowRight size={14} />
-                    </button>
+                      Apply on {job.source} <ExternalLink size={12} strokeWidth={1.5} />
+                    </a>
                   </div>
                 </div>
               </div>
