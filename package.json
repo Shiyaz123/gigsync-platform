@@ -10,7 +10,16 @@
     "start:server": "node server/dist/server.js",
     "test:server": "cd server && npm run build && npm test"
   },
-  "keywords": ["career", "resume-builder", "job-matching", "latex", "skill-gap"],
+  "keywords": [
+    "career",
+    "resume-builder",
+    "job-matching",
+    "latex",
+    "skill-gap"
+  ],
   "author": "GigSync Engineering Team",
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "docx": "^9.15.0"
+  }
 }

@@ -1,5 +1,7 @@
 import express, { Request, Response } from 'express';
 import cors from 'cors';
+import multer from 'multer';
+import mammoth from 'mammoth';
 import {
   DEFAULT_GUEST_PROFILE,
   SEEDED_JOB_LISTINGS,
@@ -22,6 +24,12 @@ const PORT = process.env.PORT || 5000;
 
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
+
+const uploadStorage = multer.memoryStorage();
+const uploadMiddleware = multer({
+  storage: uploadStorage,
+  limits: { fileSize: 10 * 1024 * 1024 } // 10MB limit
+});
 
 // In-memory data store for the session
 let currentProfile: CandidateProfile = JSON.parse(JSON.stringify(DEFAULT_GUEST_PROFILE));
@@ -142,6 +150,61 @@ app.delete('/api/profile', (req: Request, res: Response) => {
 // --------------------------------------------------------------------------
 // Resume Parsing (FR-05, FR-06, FR-07, FR-12)
 // --------------------------------------------------------------------------
+app.post('/api/parser/upload', uploadMiddleware.single('resume'), async (req: Request, res: Response) => {
+  const file = req.file;
+  if (!file) {
+    return res.status(400).json({ error: 'No resume file uploaded. Please select a PDF, DOCX, or TXT file.' });
+  }
+
+  try {
+    let extractedText = '';
+    const nameLower = file.originalname.toLowerCase();
+
+    if (nameLower.endsWith('.pdf') || file.mimetype === 'application/pdf') {
+      try {
+        const pdfjsLib = await import('pdfjs-dist');
+        const uint8 = new Uint8Array(file.buffer);
+        const loadingTask = pdfjsLib.getDocument({ data: uint8, useSystemFonts: true });
+        const pdfDoc = await loadingTask.promise;
+        let fullText = '';
+        for (let i = 1; i <= pdfDoc.numPages; i++) {
+          const page = await pdfDoc.getPage(i);
+          const content = await page.getTextContent();
+          const strings = content.items.map((item: any) => item.str || '');
+          fullText += strings.join(' ') + '\n';
+        }
+        extractedText = fullText;
+      } catch (pdfErr) {
+        console.warn('PDF parsing error, attempting string stream extraction fallback:', pdfErr);
+        // Fallback plain string stream extraction for simple textual PDFs
+        extractedText = file.buffer.toString('binary').replace(/[^\x20-\x7E\r\n]/g, ' ');
+      }
+    } else if (nameLower.endsWith('.docx') || file.mimetype.includes('wordprocessingml')) {
+      const docxResult = await mammoth.extractRawText({ buffer: file.buffer });
+      extractedText = docxResult.value || '';
+    } else {
+      extractedText = file.buffer.toString('utf-8');
+    }
+
+    if (!extractedText || extractedText.trim().length < 15) {
+      return res.status(400).json({
+        error: 'Could not extract readable text from document. If this is a scanned document, please paste the plain text directly.'
+      });
+    }
+
+    const parsedResult = parseResumeText(extractedText);
+    return res.json({
+      success: true,
+      fileName: file.originalname,
+      fileSize: file.size,
+      ...parsedResult
+    });
+  } catch (err: any) {
+    console.error('File parsing error:', err);
+    return res.status(500).json({ error: err.message || 'Failed to process resume file.' });
+  }
+});
+
 app.post('/api/parser/parse', (req: Request, res: Response) => {
   const { text } = req.body;
   if (!text || typeof text !== 'string') {
