@@ -1,0 +1,388 @@
+﻿
+GigSync
+AI-Powered Career Preparation and Job Matching Platform
+PRODUCT REQUIREMENTS DOCUMENT (PRD)Version 1.0  |  29 October 2026
+
+Document field
+Details
+Project name
+GigSync
+Project type
+Final-year Computer Science Engineering project
+Product category
+AI-assisted resume building, job discovery, and skill-gap learning
+Primary audience
+Students, fresh graduates, and early-career job seekers
+Document status
+Proposed MVP specification; implementation details and external data access must be validated
+
+Build your resume. Find relevant jobs. Bridge your skills gap.
+
+1. Executive Summary
+GigSync is a web-based career assistance platform that helps job seekers turn their existing experience into a structured resume, discover jobs that fit their profile, understand why they do or do not match a role, and identify practical learning resources to close skill gaps. The product combines document parsing, editable resume generation (including LaTeX/PDF export), explainable job matching, and personalized course recommendations.
+The platform is intended to support career decisions—not make hiring decisions or guarantee employment. AI-generated content must be grounded in information provided by the user or clearly marked as a suggestion. The system must never invent degrees, work experience, skills, certifications, metrics, or achievements.
+2. Problem Statement
+Students and early-career applicants often struggle to prepare professional resumes, find suitable openings across multiple sources, and understand the gap between their current skills and a job description. Job requirements are written inconsistently, and applicants may not know which missing skills are important or how to learn them efficiently. GigSync brings these tasks into one guided workflow.
+3. Product Vision and Goals
+3.1 Vision
+Help users make informed career moves through accessible resume tools, transparent job matching, and actionable learning plans.
+3.2 Goals
+Convert uploaded resumes or user-written career details into an editable, structured profile.
+Generate a clean resume from text or profile data, with LaTeX source and PDF export where supported.
+Recommend jobs using evidence from the user's profile and the job description.
+Explain matched skills, missing requirements, preferred skills, and possible eligibility constraints.
+Recommend relevant courses or learning resources and organize them into a practical roadmap.
+Keep users in control of their personal data and all final resume content.
+3.3 Non-goals for the initial MVP
+Automatically applying to jobs or sending messages to employers.
+Guaranteeing interviews, job offers, or job-match accuracy.
+Providing paid course hosting or building a full learning-management system.
+Scraping websites in ways that violate their terms or access restrictions.
+Making automated hiring, rejection, or candidate-ranking decisions for employers.
+Supporting every resume format, language, country, and job portal in the first release.
+4. Target Users and Personas
+Persona
+Needs
+Primary value from GigSync
+Final-year student
+Build a first professional resume; identify entry-level roles; find missing skills.
+Guided resume creation, entry-level job matches, beginner-friendly learning roadmap.
+Recent graduate
+Compare job requirements against projects, internships, and skills.
+Explainable match score and focused gap analysis.
+Early-career applicant
+Tailor a resume to a role and keep details consistent.
+Editable resume versions and job-specific recommendations.
+
+5. Core User Journey
+User creates an account or enters the product in a supported guest mode.
+User uploads a PDF/DOCX resume or enters details manually.
+GigSync extracts candidate information and displays a review screen so the user can correct parsing errors.
+User edits the profile and chooses a resume template; the system produces a preview and exportable output.
+User searches or browses available jobs and receives a relevance score with reasons.
+User opens a job to see matched requirements, missing skills, preferred skills, and any stated hard constraints.
+GigSync recommends courses/resources and a staged learning roadmap for trainable gaps.
+User saves jobs, learning resources, and resume versions for later review.
+6. Functional Requirements
+6.1 Account and Profile
+FR-01: Users can register, sign in, sign out, and reset credentials using the chosen authentication provider.
+FR-02: Users can create and edit contact details, education, experience, projects, skills, certifications, links, and career preferences.
+FR-03: The profile must distinguish user-confirmed facts from AI-suggested wording.
+FR-04: Users can view, edit, export, and request deletion of their stored profile data.
+6.2 AI Resume Builder
+FR-05: Accept supported PDF and DOCX resume uploads, plus manual text/profile entry.
+FR-06: Extract structured fields such as education, experience, skills, projects, certifications, and links; show confidence or review flags for uncertain fields.
+FR-07: Provide a review-and-correct step before extracted information is used to generate a resume.
+FR-08: Generate professional resume content from confirmed user data, with selectable templates and editable sections.
+FR-09: Support text-to-LaTeX generation and provide the LaTeX source when compilation is successful.
+FR-10: Export the resume to PDF; DOCX export may be included if feasible.
+FR-11: Allow users to create a job-specific resume version without changing the master profile.
+FR-12: Never fabricate qualifications, employment dates, employers, certifications, achievements, or numeric impact.
+FR-13: Warn users when a generated statement adds unsupported detail or when important information is missing.
+6.3 Job Search and Matching
+FR-14: Display job listings from an authorized API/feed, a permitted public dataset, or clearly labelled curated/demo data.
+FR-15: Support filters such as title/keyword, location, remote/hybrid/on-site, experience level, and source when those fields are available.
+FR-16: Compare the user's confirmed profile with job description requirements.
+FR-17: Show a match score with a short explanation; do not present the score as a probability of being hired.
+FR-18: Break match evidence into matched skills, missing essential skills, missing preferred skills, relevant experience, and unknown information.
+FR-19: Identify hard constraints stated by the listing (for example, mandatory licence or work authorization) separately from learnable skills.
+FR-20: Show source, original posting date if available, and an external application link; label stale or unverified listings.
+FR-21: Let users save/bookmark jobs and mark them as interested, applied, or not relevant.
+6.4 Skill-Gap Analysis and Learning Recommendations
+FR-22: Convert job descriptions into a structured list of skills and requirements, preserving essential/preferred distinctions where possible.
+FR-23: Compare extracted requirements against the user's confirmed skills and evidence in projects/experience.
+FR-24: Explain each identified gap and why it matters for the selected role.
+FR-25: Recommend relevant courses, tutorials, documentation, or projects from a curated or authorized source.
+FR-26: For each resource, show title, provider, topic/skills covered, level, estimated duration when available, cost/free status when verified, and link.
+FR-27: Generate a practical learning roadmap ordered by importance and prerequisites; let users adjust priorities.
+FR-28: Clearly distinguish verified resource metadata from AI-generated summaries or estimates.
+FR-29: Allow users to mark a resource or skill as planned, in progress, or completed.
+6.5 Dashboard and Saved Items
+FR-30: Provide a dashboard with the current profile completion state, saved jobs, resume versions, and learning progress.
+FR-31: Users can revisit previous resume versions and saved job analyses.
+FR-32: Provide clear empty states when no jobs or courses are available rather than displaying fabricated data.
+7. AI Behaviour and Matching Logic
+7.1 Resume processing
+Use document extraction for text retrieval, then an LLM or structured parser to map content into a defined schema. Validate output against the schema and show uncertain fields for user review. AI may improve clarity and grammar but must not add unsupported facts.
+7.2 Job match score
+The MVP may use a transparent weighted score based on skill overlap, experience relevance, education/certification requirements, and role/title similarity. Weights should be configurable and tested against a small, manually reviewed evaluation set. A semantic model may improve matching, but the interface must explain the principal evidence behind each result. Unknown fields must be treated as unknown—not automatically as a mismatch.
+Match component
+Example evidence
+UI treatment
+Skills overlap
+Python and SQL appear in both profile and job description.
+Matched skills list; contributes to relevance score.
+Essential skill gap
+Listing requires Docker; profile contains no Docker evidence.
+Prominent gap with learning recommendation.
+Preferred skill gap
+Listing prefers AWS but does not require it.
+Lower-priority gap labelled preferred.
+Experience/eligibility
+Listing requires 3 years of experience or a specific licence.
+Show as a constraint; do not imply a course can solve it.
+Unknown
+Resume parsing did not find a graduation date.
+Ask user to confirm; avoid assuming absence.
+
+7.3 Recommendation principles
+Recommend resources tied to specific missing skills, not generic course lists.
+Prioritize essential skills and prerequisite topics before optional enhancements.
+Prefer trustworthy, accessible resources and verify links/metadata where possible.
+Do not claim that completing a course guarantees qualification or employment.
+Let the user decide whether a gap is relevant to their career goal.
+8. Key Screens
+Screen
+Required elements
+Landing / onboarding
+Product purpose, sign-in, privacy summary, start action.
+Profile setup
+Upload/manual entry, parsing status, editable structured fields.
+Resume studio
+Section editor, template selector, preview, LaTeX/PDF export, version history.
+Job discovery
+Search bar, filters, job cards, source/date, match score and short rationale.
+Job detail & gap analysis
+Job description, matched skills, missing essential/preferred skills, constraints, roadmap entry point.
+Learning roadmap
+Prioritized skills, resource cards, duration/level if known, progress status.
+Dashboard
+Profile status, saved jobs, recent resumes, learning progress.
+Settings & privacy
+Data export/deletion, account settings, consent and privacy information.
+
+9. Data Requirements (High-Level)
+Entity
+Important fields
+User
+id, email/auth identifier, created_at, preferences
+CandidateProfile
+user_id, education, experience, skills, projects, certifications, links, updated_at
+ResumeVersion
+id, user_id, title, template, structured_content, latex_source, export_path, created_at
+JobListing
+id, source, source_job_id, title, company, location, work_mode, description, requirements, posted_at, apply_url, last_verified_at
+JobMatch
+id, user_id, job_id, score, matched_skills, missing_essential, missing_preferred, constraints, explanation, created_at
+LearningResource
+id, provider, title, url, skills, level, duration, price_status, last_verified_at
+LearningPlanItem
+id, user_id, job_match_id, resource_id, skill, status, priority, target_date
+SavedJob
+user_id, job_id, status, saved_at
+
+Store only data needed for the product. Define retention and deletion behaviour before production deployment.
+10. Suggested Technical Architecture
+Layer
+Suggested option
+Purpose
+Frontend
+React + Tailwind CSS
+Responsive web interface, forms, resume editor, job cards, roadmap.
+Backend API
+Python with Django REST Framework or FastAPI
+Authentication integration, profile/job/course APIs, orchestration and validation.
+Database
+PostgreSQL
+Users, structured profiles, job metadata, saved items, learning progress.
+Resume extraction
+PyMuPDF for PDF; python-docx for DOCX
+Extract text from supported document types.
+AI/NLP
+LLM API with structured outputs; optional Sentence Transformers or TF-IDF baseline
+Resume structuring, requirement extraction, semantic matching, explanations.
+Resume rendering
+LaTeX template + Tectonic or another controlled compiler
+Generate LaTeX source and PDF output.
+Job data
+Authorized job API/feed or approved dataset
+Searchable listings and source attribution.
+Course data
+Curated catalogue or authorized provider feeds
+Grounded course recommendations.
+Deployment
+Docker + suitable cloud host
+Repeatable deployment and environment configuration.
+
+This is a proposed stack, not a mandatory dependency list. Select one backend framework and validate job-data access, LaTeX compilation, API costs, and deployment limits early.
+11. Non-Functional Requirements
+NFR-01 Usability: Core tasks should be understandable to a student with basic computer skills; use plain-language explanations and visible progress states.
+NFR-02 Performance: For typical supported resumes, parsing and preview generation should provide clear progress and aim to complete within a reasonable interactive wait; benchmark before setting a firm SLA.
+NFR-03 Reliability: Handle malformed, scanned, encrypted, or unsupported documents with actionable errors rather than crashing.
+NFR-04 Security: Use HTTPS in deployment, secure authentication, server-side authorization, input validation, secrets management, and safe file handling.
+NFR-05 Privacy: Obtain consent before processing uploaded resumes with external AI providers; explain storage and deletion; do not expose one user's data to another.
+NFR-06 Accessibility: Use readable contrast, keyboard-accessible controls, labels, and responsive layouts.
+NFR-07 Explainability: Every match result should provide evidence and limitations, not only a score.
+NFR-08 Maintainability: Keep parsing, matching, resource catalogues, and UI logic modular and testable.
+NFR-09 Data quality: Show source and freshness where available; avoid presenting demo data as live listings.
+NFR-10 Responsible AI: Minimize sensitive data, avoid inferring protected traits, and provide user correction and override controls.
+12. Security, Privacy, and Responsible AI
+Treat resumes as personal data. Explain what is extracted, where it is processed, and how long it is retained.
+Do not use resume data to infer sensitive personal attributes or to make high-impact decisions on behalf of employers.
+Use external AI services only after reviewing their data-handling terms and configuring appropriate privacy settings.
+Validate uploaded file type and size; scan or safely process files; never execute uploaded content.
+Escape user-provided text in HTML and carefully validate content passed to LaTeX to prevent injection or compilation abuse.
+Keep API keys and secrets out of source control; enforce access checks on every user-owned resource.
+Use only job listings and course information obtained through permitted sources, and honour source terms and attribution requirements.
+Label generated summaries, estimated durations, and uncertain extractions; allow users to correct errors.
+13. MVP Scope and Prioritization
+Priority
+Feature
+MVP definition
+P0 - Must
+Profile and resume parsing
+Upload PDF/DOCX or enter manually; parse into editable fields; user confirms facts.
+P0 - Must
+Resume builder
+At least one polished template; generate LaTeX source and PDF export.
+P0 - Must
+Job discovery
+Search/filter a limited, authorized job source or a clearly labelled seeded dataset.
+P0 - Must
+Explainable matching
+Show score, evidence, missing skills, preferred gaps, and hard constraints.
+P0 - Must
+Skill-gap analysis
+Compare job requirements with the confirmed profile.
+P0 - Must
+Course recommendations
+Curated/authorized resources mapped to gaps and a basic prioritized roadmap.
+P1 - Should
+Saved jobs and versions
+Bookmark jobs and retain resume versions.
+P1 - Should
+Learning progress
+Mark roadmap items as planned, in progress, or complete.
+P2 - Could
+Multiple templates
+Additional layouts and customization.
+P2 - Could
+Semantic matching
+Embedding-based retrieval evaluated against a baseline.
+P2 - Could
+Analytics
+Personal progress and aggregate, privacy-preserving product metrics.
+
+14. Acceptance Criteria
+A user can upload a supported PDF/DOCX or enter profile details manually and review extracted information before use.
+The resume editor allows users to correct content, preview the selected template, and export a PDF; LaTeX source is available when generated successfully.
+The system does not add unconfirmed education, employment, skills, certifications, or achievement metrics to the resume.
+A job result displays its source and application URL, and the interface clearly distinguishes live/verified listings from demo or stale records.
+A match result includes matched skills and missing requirements; essential and preferred gaps are not presented as equivalent.
+Course recommendations map to at least one identified gap and include a usable link or are clearly labelled as unavailable.
+Users can save a job and revisit the associated analysis.
+A user cannot access another user's profile, resume, saved jobs, or learning progress.
+Malformed or unsupported uploads produce a clear error and do not crash the application.
+Empty results are handled honestly; no fake jobs, course records, match results, or success messages are displayed.
+15. Success Metrics
+Metric
+Definition / initial evaluation
+Resume completion rate
+Percentage of users who reach a saved/exported resume.
+Parsing correction rate
+Number of fields edited after extraction; use to identify parsing weaknesses.
+Job relevance rating
+User rating of whether a recommended job is relevant; collect with optional feedback.
+Match explanation coverage
+Percentage of match results with evidence for score and gap classifications.
+Recommendation usefulness
+Percentage of course/resource recommendations users mark useful.
+Task completion time
+Time to create/export a resume and identify a skill gap in usability testing.
+System quality
+Parsing field accuracy and match-ranking quality measured on a manually reviewed test set.
+
+Before claiming accuracy or effectiveness in the final-year report, define a test set, document the evaluation method, report actual results, and disclose limitations. Do not invent performance metrics.
+16. Risks and Mitigations
+Risk
+Impact
+Mitigation
+Job API access or quotas
+Job listings may be unavailable or incomplete.
+Validate access early; use permitted demo data for development and label it clearly.
+Resume parsing errors
+Incorrect user profile or misleading resume.
+Show extracted fields for review; test multiple file formats and layouts.
+Hallucinated resume content
+Misrepresentation of applicant qualifications.
+Ground generation in confirmed facts; require user review; test for unsupported additions.
+Unreliable match score
+Users may misinterpret ranking.
+Explain evidence, tune against reviewed examples, avoid hiring-probability language.
+Outdated course links/details
+Poor recommendations.
+Track verification date; periodically check links; show unavailable details as unknown.
+LaTeX injection or unsafe files
+Potential server-side abuse.
+Use restricted compilation, time/resource limits, escaping, file validation, and isolated processing.
+Scope creep
+MVP may not be completed on time.
+Deliver P0 features first; defer automation, extensive templates, and advanced analytics.
+External AI cost/latency
+Slow responses or cost overruns.
+Set limits, cache safe reusable results, monitor usage, and provide graceful error states.
+
+17. Suggested Development Phases
+Phase
+Deliverable
+Exit condition
+Phase 1: Foundation
+Wireframes, database schema, authentication, profile model.
+A user can create and edit a structured profile.
+Phase 2: Resume Studio
+Upload/parsing, correction UI, template, LaTeX/PDF export.
+A user can review and export a truthful resume.
+Phase 3: Job Discovery
+Authorized/seeded listing ingestion, search and filters.
+Listings display source and application link correctly.
+Phase 4: Matching
+Requirement extraction, baseline matching, explanations.
+Reviewed examples show understandable evidence and gaps.
+Phase 5: Learning Roadmap
+Resource catalogue, gap-to-course mapping, progress states.
+A user can move from a job gap to a relevant learning plan.
+Phase 6: Testing and Deployment
+Security checks, usability testing, documentation, deployment.
+Acceptance criteria are tested and known limitations documented.
+
+18. Testing Strategy
+Unit tests: file parsing, profile validation, requirement extraction, score calculation, access-control helpers.
+Integration tests: upload-to-profile, profile-to-resume export, job-to-match analysis, gap-to-course recommendation.
+Security tests: cross-user access, malformed files, unsafe LaTeX characters, file size/type validation, secrets exposure.
+AI evaluation: manually reviewed resume fields, job requirements, match explanations, and recommendation relevance.
+Usability tests: ask representative students to complete resume creation and job-gap tasks; record confusion and completion time.
+Regression tests: maintain a small set of sample resumes and job descriptions to detect quality changes.
+19. Assumptions and Open Decisions
+Initial audience is students, fresh graduates, and early-career applicants; geography and supported languages are to be finalized.
+The first release is a responsive web application.
+The team must choose one backend framework (Django REST Framework or FastAPI) before implementation.
+The team must confirm which job source/API is permitted and available; do not promise live comprehensive coverage until validated.
+The team must decide whether authentication is required for the academic demo or whether a limited guest flow is useful.
+The team must select an AI provider/model after considering cost, latency, structured-output support, and privacy terms.
+Course recommendations initially use a curated or authorized catalogue rather than an unverified open-ended scrape.
+The exact match-score weights and evaluation dataset must be documented as implementation decisions, not treated as universal truths.
+20. Definition of Done
+All P0 requirements are implemented or explicitly documented as deferred with mentor approval.
+Core workflows are tested from end to end.
+The app handles parsing failures and unavailable external sources gracefully.
+The project report describes architecture, algorithms, data sources, testing, actual results, and limitations accurately.
+The demo contains no misleading dummy records presented as real data.
+Privacy, consent, attribution, and responsible AI limitations are documented.
+Appendix A: Example Job Match Explanation
+Illustrative example only—not a real listing or measured model output.
+Category
+Example
+Role
+Junior Python Developer
+Matched evidence
+Python listed in skills; Django project listed in projects.
+Potential gaps
+Job asks for Docker and automated testing; neither is confirmed in the profile.
+Preferred skill
+Cloud deployment is marked preferred by the example listing.
+Constraint
+If the listing requires work authorization or a specific qualification, display it separately.
+Next action
+Review the gaps, choose a Docker/testing resource, and decide whether to apply based on the full listing.
+
+This PRD is a working specification. Update it when the project mentor approves scope, data sources, architecture, and evaluation criteria.

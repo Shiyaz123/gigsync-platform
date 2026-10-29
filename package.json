@@ -1,0 +1,16 @@
+{
+  "name": "gigsync",
+  "version": "1.0.0",
+  "description": "GigSync - AI-Powered Career Preparation and Job Matching Platform",
+  "scripts": {
+    "install:all": "cd client && npm install && cd ../server && npm install",
+    "build:server": "cd server && npm run build",
+    "build:client": "cd client && npm run build",
+    "build": "npm run build:server && npm run build:client",
+    "start:server": "node server/dist/server.js",
+    "test:server": "cd server && npm run build && npm test"
+  },
+  "keywords": ["career", "resume-builder", "job-matching", "latex", "skill-gap"],
+  "author": "GigSync Engineering Team",
+  "license": "MIT"
+}
