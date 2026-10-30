@@ -84,31 +84,6 @@ app.get('/api/health', (req: Request, res: Response) => {
   res.json({ status: 'ok', product: 'GigSync API', version: '1.0.0', time: new Date().toISOString() });
 });
 
-app.get('/api/debug/themuse', async (req: Request, res: Response) => {
-  const https = await import('https');
-  const url = 'https://www.themuse.com/api/public/jobs?category=Software+Engineering&page=0&location=Bangalore%2C%20India';
-  const getReq = https.get(url, {
-    headers: {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-      'Accept': 'application/json, text/plain, */*',
-      'Accept-Language': 'en-US,en;q=0.9'
-    },
-    timeout: 8000
-  }, (museRes) => {
-    let d = '';
-    museRes.on('data', c => d += c);
-    museRes.on('end', () => {
-      res.json({
-        statusCode: museRes.statusCode,
-        headers: museRes.headers,
-        bodySnippet: d.slice(0, 300)
-      });
-    });
-  });
-  getReq.on('error', (err) => res.status(500).json({ error: err.message }));
-  getReq.on('timeout', () => { getReq.destroy(); res.status(504).json({ error: 'Timeout' }); });
-});
-
 // --------------------------------------------------------------------------
 // Auth & User Profile (FR-01, FR-02, FR-03, FR-04)
 // --------------------------------------------------------------------------
