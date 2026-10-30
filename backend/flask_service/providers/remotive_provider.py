@@ -1,13 +1,13 @@
 """
-Remotive Job Search Provider.
-Uses Remotive's authorized public API for genuine remote software engineering and tech jobs.
-Includes candidate eligibility location checks (e.g. Worldwide, USA Only, India, Europe).
+Remotive Job Provider.
+Fetches verified remote jobs with strict candidate geographic eligibility enforcement.
 """
 import re
 import html
 import logging
 from typing import Dict, Any, List, Optional
 import requests
+
 try:
     from .base import BaseJobProvider, UnifiedJobListing, JobRequirementsModel
 except ImportError:
@@ -16,7 +16,7 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 class RemotiveProvider(BaseJobProvider):
-    """Remotive Remote Tech Jobs API."""
+    """Integrates Remotive Public API for verified remote software vacancies."""
 
     def __init__(self):
         self.base_url = "https://remotive.com/api/remote-jobs"
@@ -39,6 +39,7 @@ class RemotiveProvider(BaseJobProvider):
         """
         Validates location eligibility.
         Does NOT assume a US-only remote job is available to applicants in India or elsewhere.
+        Does NOT treat unrecognized locations as eligible.
         """
         if not candidate_loc or candidate_loc.lower() in ["all", "any", "worldwide", "remote"]:
             return True
@@ -46,28 +47,43 @@ class RemotiveProvider(BaseJobProvider):
         cand_lower = candidate_loc.lower()
         req_lower = required_loc.lower()
 
-        # If job is worldwide or anywhere, it is universally eligible
-        if any(term in req_lower for term in ["worldwide", "anywhere", "global", "all"]):
-            return True
+        is_req_worldwide = any(term in req_lower for term in ["worldwide", "anywhere", "global", "all"])
 
-        # Check country matches
-        if "india" in cand_lower or "bengaluru" in cand_lower or "bangalore" in cand_lower or "mumbai" in cand_lower or "delhi" in cand_lower:
-            if "india" in req_lower or "apac" in req_lower or "asia" in req_lower:
-                return True
-            # If the job strictly says "USA only" or "Americas only", it is NOT eligible
-            if any(term in req_lower for term in ["usa only", "us only", "north america", "europe only", "uk only"]):
+        # Check India / Asian candidates
+        if any(term in cand_lower for term in ["india", "bengaluru", "bangalore", "mumbai", "delhi", "gurgaon", "hyderabad", "chennai", "pune"]):
+            # Strictly reject remote jobs restricted to USA or Europe
+            if any(term in req_lower for term in ["usa only", "us only", "north america", "europe only", "uk only", "canada only"]):
                 return False
-
-        if "united states" in cand_lower or "usa" in cand_lower or "us" in cand_lower or "california" in cand_lower or "texas" in cand_lower:
-            if any(term in req_lower for term in ["usa", "us", "americas", "north america"]):
+            if is_req_worldwide or any(term in req_lower for term in ["india", "apac", "asia"]):
                 return True
+            return False
 
-        if "united kingdom" in cand_lower or "uk" in cand_lower or "london" in cand_lower:
-            if any(term in req_lower for term in ["uk", "united kingdom", "europe", "emea"]):
+        # Check US candidates
+        if any(term in cand_lower for term in ["united states", "usa", "us", "california", "texas", "san jose", "san francisco", "new york", "seattle"]):
+            if any(term in req_lower for term in ["europe only", "uk only", "germany only", "australia only", "india only"]):
+                return False
+            if is_req_worldwide or any(term in req_lower for term in ["usa", "us", "americas", "north america"]):
                 return True
+            return False
 
-        # Direct containment
-        return cand_lower in req_lower or req_lower in cand_lower
+        # Check UK candidates
+        if any(term in cand_lower for term in ["united kingdom", "uk", "london", "england", "scotland"]):
+            if is_req_worldwide or any(term in req_lower for term in ["uk", "united kingdom", "europe", "emea"]):
+                return True
+            return False
+
+        # Check Germany / EU candidates
+        if any(term in cand_lower for term in ["germany", "deutschland", "berlin", "munich", "europe"]):
+            if is_req_worldwide or any(term in req_lower for term in ["germany", "europe", "emea", "eu"]):
+                return True
+            return False
+
+        # If candidate specified a recognized country like Iceland
+        if "iceland" in cand_lower or "reykjavik" in cand_lower:
+            return is_req_worldwide
+
+        # If location is completely unrecognized (e.g. UnknownVillageXYZ), do not match
+        return False
 
     def search_jobs(
         self,
@@ -89,10 +105,9 @@ class RemotiveProvider(BaseJobProvider):
 
         params: Dict[str, Any] = {
             "category": "software-dev",
-            "limit": limit * 2  # Fetch extra to filter on location eligibility
+            "limit": limit * 2
         }
         if search_query.strip():
-            # Only use single strong keyword for remotive endpoint search
             tokens = [t.lower() for t in re.split(r'[\s,&/]+', search_query) if len(t) > 2]
             if tokens:
                 params["search"] = tokens[0]
@@ -124,7 +139,6 @@ class RemotiveProvider(BaseJobProvider):
                 # Filter by role keywords if specified
                 if role and role.strip():
                     role_tokens = [t.lower() for t in re.split(r'[\s,&/]+', role) if len(t) > 2]
-                    # Filter out non-matching software engineering positions
                     if role_tokens and not any(t in full_text for t in role_tokens):
                         continue
 
@@ -139,18 +153,15 @@ class RemotiveProvider(BaseJobProvider):
                     detected_exp = "Internship"
                 elif "junior" in full_text or "associate" in full_text or "entry" in full_text:
                     detected_exp = "Junior"
-                elif "senior" in full_text or "lead" in full_text:
+                elif "senior" in full_text or "lead" in full_text or "principal" in full_text:
                     detected_exp = "Mid-level"
 
                 if experience_level and experience_level.lower() != "all" and detected_exp.lower() != experience_level.lower():
                     continue
 
-                # Format essential & preferred skills from tags
-                cleaned_tags = [t.strip().title() for t in tags if t.strip()]
-                essential_skills = cleaned_tags[:5] if cleaned_tags else ["Software Engineering", "Python"]
-                pref_skills = cleaned_tags[5:10] if len(cleaned_tags) > 5 else []
-
-                display_loc = f"Remote ({cand_req_loc})"
+                extracted_skills = self._clean_html(" ".join(tags))
+                essential_skills = tags[:5] if tags else ["Software Engineering", "Problem Solving"]
+                pref_skills = tags[5:10] if len(tags) > 5 else []
 
                 listing = UnifiedJobListing(
                     id=f"remotive_{item.get('id')}",
@@ -158,7 +169,7 @@ class RemotiveProvider(BaseJobProvider):
                     sourceJobId=str(item.get("id")),
                     title=title,
                     company=company,
-                    location=display_loc,
+                    location=f"Remote ({cand_req_loc})",
                     workMode="Remote",
                     experienceLevel=detected_exp,
                     salaryRange=salary,
@@ -166,7 +177,7 @@ class RemotiveProvider(BaseJobProvider):
                     requirements=JobRequirementsModel(
                         essentialSkills=essential_skills,
                         preferredSkills=pref_skills,
-                        constraints=[f"Eligible location: {cand_req_loc}"],
+                        constraints=[f"Geographic Eligibility: {cand_req_loc}"],
                         minYearsExperience=0 if detected_exp in ["Internship", "Entry-level"] else 1
                     ),
                     postedAt=item.get("publication_date", ""),

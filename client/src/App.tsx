@@ -136,11 +136,16 @@ export const App: React.FC = () => {
   const initializeData = async () => {
     try {
       const authData = await api.getGuestSession().catch(() => null);
+      let activeProfile = INITIAL_PROFILE;
       if (authData?.profile) {
         setProfile(authData.profile);
+        activeProfile = authData.profile;
       }
 
-      const jobsData = await api.getJobs().catch(() => []);
+      const prefLoc = activeProfile.personalInfo.location || activeProfile.careerPreferences?.targetLocations?.[0] || '';
+      const prefRole = activeProfile.personalInfo.title || activeProfile.careerPreferences?.targetRoles?.[0] || 'Software Engineer';
+
+      const jobsData = await api.getJobs({ location: prefLoc, role: prefRole }).catch(() => []);
       setJobs(jobsData);
 
       const saved = await api.getSavedJobs().catch(() => []);
@@ -257,7 +262,9 @@ export const App: React.FC = () => {
             profile={profile}
             onUpdateProfile={(updated) => {
               setProfile(updated);
-              api.getJobs().then(setJobs).catch(() => {});
+              const loc = updated.personalInfo.location || (updated.careerPreferences?.targetLocations?.[0] || '');
+              const role = updated.personalInfo.title || (updated.careerPreferences?.targetRoles?.[0] || 'Software Engineer');
+              api.getJobs({ location: loc, role }).then(setJobs).catch(() => {});
             }}
             showToast={showToast}
             onNavigateToAssistant={() => setCurrentTab('ai-assistant')}

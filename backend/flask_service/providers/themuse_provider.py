@@ -1,13 +1,14 @@
 """
-The Muse Job Search Provider.
-Uses The Muse's authorized public developer REST API for verified corporate job listings.
+The Muse Job Provider.
+Fetches genuine jobs directly from The Muse API.
+Strictly maps verified locations and prevents false city/country matches.
 """
-import os
 import re
 import html
 import logging
 from typing import Dict, Any, List, Optional
 import requests
+
 try:
     from .base import BaseJobProvider, UnifiedJobListing, JobRequirementsModel
 except ImportError:
@@ -15,19 +16,52 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-class TheMuseProvider(BaseJobProvider):
-    """The Muse public API integration."""
+CITY_ALIASES: Dict[str, List[str]] = {
+    'bengaluru': ['bengaluru', 'bangalore'],
+    'bangalore': ['bengaluru', 'bangalore'],
+    'mumbai': ['mumbai', 'bombay'],
+    'delhi': ['delhi', 'new delhi'],
+    'new delhi': ['new delhi', 'delhi'],
+    'gurgaon': ['gurgaon', 'gurugram'],
+    'gurugram': ['gurugram', 'gurgaon'],
+    'noida': ['noida'],
+    'hyderabad': ['hyderabad'],
+    'chennai': ['chennai', 'madras'],
+    'pune': ['pune'],
+    'kolkata': ['kolkata', 'calcutta'],
+    'san jose': ['san jose'],
+    'san francisco': ['san francisco', 'sf'],
+    'sunnyvale': ['sunnyvale'],
+    'palo alto': ['palo alto'],
+    'mountain view': ['mountain view'],
+    'los angeles': ['los angeles', 'la'],
+    'san diego': ['san diego'],
+    'new york': ['new york', 'nyc', 'manhattan'],
+    'nyc': ['new york', 'nyc', 'manhattan'],
+    'seattle': ['seattle'],
+    'bellevue': ['bellevue'],
+    'redmond': ['redmond'],
+    'austin': ['austin'],
+    'boston': ['boston'],
+    'chicago': ['chicago'],
+    'london': ['london'],
+    'berlin': ['berlin'],
+    'munich': ['munich'],
+    'reykjavik': ['reykjavik']
+}
 
-    def __init__(self):
+class TheMuseProvider(BaseJobProvider):
+    """Integrates The Muse Public Jobs API with strict location mapping."""
+
+    def __init__(self, api_key: Optional[str] = None):
         self.base_url = "https://www.themuse.com/api/public/jobs"
-        self.api_key = os.environ.get("THE_MUSE_API_KEY", "").strip()
+        self.api_key = api_key
 
     @property
     def provider_name(self) -> str:
         return "The Muse"
 
     def is_configured(self) -> bool:
-        # Public API accessible without key, key optional for higher rate limits
         return True
 
     def _clean_html(self, raw_html: str) -> str:
@@ -38,18 +72,25 @@ class TheMuseProvider(BaseJobProvider):
         return re.sub(r'\s+', ' ', clean).strip()
 
     def _extract_skills(self, text: str) -> List[str]:
-        skill_catalog = [
+        catalog = [
             "Python", "JavaScript", "TypeScript", "React", "Node.js", "Java", "C++",
             "C#", "SQL", "PostgreSQL", "MySQL", "MongoDB", "AWS", "Azure", "GCP",
             "Docker", "Kubernetes", "Git", "REST APIs", "FastAPI", "Django", "Flask",
             "HTML5", "CSS3", "Linux", "GraphQL", "Redis", "CI/CD", "Machine Learning"
         ]
-        text_lower = text.lower()
         found = []
-        for sk in skill_catalog:
-            if re.search(r'\b' + re.escape(sk.lower()) + r'\b', text_lower):
+        lower = text.lower()
+        for sk in catalog:
+            pattern = rf"(^|[^a-zA-Z0-9]){re.escape(sk.lower())}([^a-zA-Z0-9]|$)"
+            if re.search(pattern, lower):
                 found.append(sk)
         return found
+
+    def _detect_requested_city(self, loc_lower: str) -> Optional[str]:
+        for city_key in CITY_ALIASES:
+            if city_key in loc_lower:
+                return city_key
+        return None
 
     def search_jobs(
         self,
@@ -62,7 +103,7 @@ class TheMuseProvider(BaseJobProvider):
         limit: int = 20,
         timeout: int = 10
     ) -> List[UnifiedJobListing]:
-        """Fetch verified jobs from The Muse."""
+        """Fetch verified jobs from The Muse with strict geographic boundary enforcement."""
         muse_page = max(0, page - 1)
         params: Dict[str, Any] = {
             "page": muse_page,
@@ -71,26 +112,43 @@ class TheMuseProvider(BaseJobProvider):
         if self.api_key:
             params["api_key"] = self.api_key
 
+        detected_city: Optional[str] = None
+        is_india_search = False
+        is_us_search = False
+
         if location and location.strip():
             loc_clean = location.strip()
             loc_lower = loc_clean.lower()
+            detected_city = self._detect_requested_city(loc_lower)
+
+            if "india" in loc_lower or detected_city in ['bengaluru', 'bangalore', 'mumbai', 'delhi', 'new delhi', 'gurgaon', 'gurugram', 'noida', 'hyderabad', 'chennai', 'pune']:
+                is_india_search = True
+            elif "united states" in loc_lower or "usa" in loc_lower or "us" in loc_lower or detected_city in ['san jose', 'san francisco', 'sunnyvale', 'palo alto', 'new york', 'nyc', 'seattle', 'austin', 'boston', 'chicago']:
+                is_us_search = True
+
             # If user explicitly specified Remote, set location filter
             if loc_lower in ["remote", "flexible", "work from home"]:
                 params["location"] = "Flexible / Remote"
-            elif "bengaluru" in loc_lower or "bangalore" in loc_lower:
+            elif detected_city in ["bengaluru", "bangalore"]:
                 params["location"] = "Bangalore, India"
-            elif "mumbai" in loc_lower:
+            elif detected_city == "mumbai":
                 params["location"] = "Mumbai, India"
-            elif "gurgaon" in loc_lower or "gurugram" in loc_lower or "delhi" in loc_lower:
+            elif detected_city in ["gurgaon", "gurugram", "delhi", "new delhi", "noida"]:
                 params["location"] = "Gurgaon, India"
-            elif "hyderabad" in loc_lower:
+            elif detected_city == "hyderabad":
                 params["location"] = "Hyderabad, India"
-            elif "chennai" in loc_lower:
+            elif detected_city == "chennai":
                 params["location"] = "Chennai, India"
-            elif "san jose" in loc_lower:
+            elif detected_city == "san jose":
                 params["location"] = "San Jose, CA"
-            elif "san francisco" in loc_lower:
+            elif detected_city == "san francisco":
                 params["location"] = "San Francisco, CA"
+            elif detected_city in ["new york", "nyc"]:
+                params["location"] = "New York, NY"
+            elif detected_city == "seattle":
+                params["location"] = "Seattle, WA"
+            elif detected_city == "austin":
+                params["location"] = "Austin, TX"
             else:
                 params["location"] = loc_clean
 
@@ -112,10 +170,6 @@ class TheMuseProvider(BaseJobProvider):
 
         try:
             resp = requests.get(self.base_url, params=params, headers=headers, timeout=timeout)
-            if resp.status_code == 401 or resp.status_code == 403:
-                # If location query was rejected or blocked by cloudflare
-                logger.warning(f"The Muse API returned HTTP {resp.status_code}")
-                return []
             if resp.status_code != 200:
                 logger.warning(f"The Muse API returned HTTP {resp.status_code}")
                 return []
@@ -131,44 +185,49 @@ class TheMuseProvider(BaseJobProvider):
                 loc_str = ", ".join(locations_list) if locations_list else "Flexible / Remote"
                 desc = self._clean_html(item.get("contents", ""))
                 full_text = f"{title} {desc} {loc_str}".lower()
+                all_locs_lower = f"{loc_str} {' '.join(locations_list)}".lower()
 
                 # Role query filtering
                 if role and role.strip():
-                    role_terms = role.strip().lower().split()
-                    # At least one major role term must appear in title or desc
-                    if not any(term in full_text for term in role_terms):
+                    role_terms = [t for t in role.strip().lower().split() if len(t) > 2]
+                    if role_terms and not any(term in full_text for term in role_terms):
                         continue
 
-                # Location strictly respected:
+                is_job_remote = "flexible / remote" in loc_str.lower() or "remote" in loc_str.lower()
+
+                # Strict Location Filtering
                 if location and location.strip():
                     req_loc = location.strip().lower()
                     if req_loc not in ["all", "any", "worldwide"]:
                         is_remote_search = req_loc in ["remote", "flexible / remote", "flexible", "wfh"]
-                        # Extract city / region tokens
-                        loc_tokens = [t.strip() for t in re.split(r'[\s,]+', req_loc) if len(t.strip()) > 2]
-                        # Account for Bengaluru/Bangalore alias
-                        if "bengaluru" in req_loc:
-                            loc_tokens.append("bangalore")
-                        if "bangalore" in req_loc:
-                            loc_tokens.append("bengaluru")
-
-                        is_loc_match = any(t in loc_str.lower() for t in loc_tokens) or any(
-                            any(t in l.lower() for t in loc_tokens) for l in locations_list
-                        )
-                        is_job_remote = "flexible / remote" in loc_str.lower() or "remote" in loc_str.lower()
 
                         if is_remote_search:
                             if not is_job_remote:
                                 continue
-                        else:
-                            # User searched for a specific city/country (e.g. San Jose, CA or Bengaluru, India)
-                            if not is_loc_match:
-                                # When specific city or country requested, do not substitute unrelated locations
+                        elif detected_city:
+                            # Match FULL city aliases (e.g. 'san jose', 'bangalore')
+                            aliases = CITY_ALIASES.get(detected_city, [detected_city])
+                            matches_city = any(
+                                re.search(rf"(^|[^a-zA-Z0-9]){re.escape(alias)}([^a-zA-Z0-9]|$)", all_locs_lower)
+                                for alias in aliases
+                            )
+                            if not matches_city:
                                 continue
+                        elif is_india_search:
+                            # Must be located in India
+                            if not any(k in all_locs_lower for k in ["india", "bangalore", "mumbai", "delhi", "gurgaon", "hyderabad", "chennai"]):
+                                continue
+                        elif is_us_search:
+                            # Must be located in US
+                            if not any(k in all_locs_lower for k in ["united states", "usa", ", us", "ca", "tx", "ny", "wa", "il", "ma"]):
+                                continue
+                        else:
+                            # Unrecognized location string - do not claim match
+                            return []
 
-                # Work mode detection
+                # Work mode detection & filtering
                 detected_mode = "On-site"
-                if "flexible / remote" in loc_str.lower() or "remote" in loc_str.lower() or "remote" in title.lower():
+                if is_job_remote:
                     detected_mode = "Remote"
                 elif "hybrid" in full_text:
                     detected_mode = "Hybrid"
@@ -211,7 +270,7 @@ class TheMuseProvider(BaseJobProvider):
                     requirements=JobRequirementsModel(
                         essentialSkills=essential_skills,
                         preferredSkills=pref_skills,
-                        constraints=[f"Eligible for {detected_mode} work in {loc_str}"],
+                        constraints=[f"Verified Location: {loc_str}"],
                         minYearsExperience=0 if detected_exp in ["Internship", "Entry-level"] else 1
                     ),
                     postedAt=item.get("publication_date", ""),

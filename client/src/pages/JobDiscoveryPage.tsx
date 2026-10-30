@@ -17,7 +17,8 @@ import {
   Inbox,
   Loader2,
   RefreshCw,
-  AlertCircle
+  AlertCircle,
+  Globe
 } from 'lucide-react';
 
 interface JobDiscoveryPageProps {
@@ -81,6 +82,11 @@ export const JobDiscoveryPage: React.FC<JobDiscoveryPageProps> = ({
     mode: string,
     exp: string
   ) => {
+    // Immediately clear previous search results to avoid showing stale cached listings
+    setLocalJobs([]);
+    if (onUpdateJobs) {
+      onUpdateJobs([]);
+    }
     setIsLoading(true);
     setErrorMessage(null);
     setHasSearched(true);
@@ -119,6 +125,40 @@ export const JobDiscoveryPage: React.FC<JobDiscoveryPageProps> = ({
 
   const isJobSaved = (jobId: string) => savedJobs.some(sj => sj.jobId === jobId);
 
+  // Helper to extract country tag from location string
+  const detectCountry = (loc: string): string => {
+    const l = (loc || '').toLowerCase();
+    if (l.includes('india') || l.includes('bangalore') || l.includes('bengaluru') || l.includes('mumbai') || l.includes('delhi') || l.includes('gurgaon') || l.includes('hyderabad') || l.includes('chennai') || l.includes('pune')) {
+      return 'India [IN]';
+    }
+    if (l.includes('united states') || l.includes('usa') || l.includes('san jose') || l.includes('san francisco') || l.includes('new york') || l.includes('seattle') || l.includes('austin') || l.includes(', ca') || l.includes(', tx') || l.includes(', ny') || l.includes(', wa') || l.includes(', il') || l.includes(', ma')) {
+      return 'United States [US]';
+    }
+    if (l.includes('united kingdom') || l.includes('uk') || l.includes('london') || l.includes('england')) {
+      return 'United Kingdom [GB]';
+    }
+    if (l.includes('germany') || l.includes('deutschland') || l.includes('berlin') || l.includes('munich')) {
+      return 'Germany [DE]';
+    }
+    if (l.includes('worldwide') || l.includes('anywhere') || l.includes('global')) {
+      return 'Worldwide [GLOBAL]';
+    }
+    return '';
+  };
+
+  // Helper to extract remote eligibility constraint
+  const extractRemoteEligibility = (job: JobListing): string | null => {
+    if (job.workMode !== 'Remote') return null;
+    const constraint = job.requirements?.constraints?.find(c =>
+      c.toLowerCase().includes('eligib') || c.toLowerCase().includes('location')
+    );
+    if (constraint) {
+      return constraint.replace(/^(geographic\s*eligibility|eligible\s*location|verified\s*location):\s*/i, '');
+    }
+    const match = job.location.match(/remote\s*\(([^)]+)\)/i);
+    return match ? match[1] : 'Worldwide';
+  };
+
   return (
     <div className="job-discovery-page space-y-8 pb-16">
       {/* Editorial Header */}
@@ -130,7 +170,7 @@ export const JobDiscoveryPage: React.FC<JobDiscoveryPageProps> = ({
               Find Genuine Jobs
             </h1>
             <p className="text-sm text-[#686C63] mt-1">
-              Real opportunities sourced from authorized global providers (Adzuna, The Muse, Remotive). Zero fabricated postings.
+              Real opportunities sourced from authorized global providers (The Muse, Remotive, Arbeitnow). Strictly zero fabricated or placeholder listings.
             </p>
           </div>
           <span className="tag-mono text-[#686C63]">
@@ -221,17 +261,18 @@ export const JobDiscoveryPage: React.FC<JobDiscoveryPageProps> = ({
 
         {/* Active Query Summary & Reset */}
         <div className="flex items-center justify-between text-[11px] font-mono text-[#686C63] pt-1">
-          <div className="flex items-center gap-2">
-            <span>Querying:</span>
+          <div className="flex items-center gap-2 flex-wrap">
+            <span>Selected Search Location:</span>
+            <span className="text-[#20251F] font-semibold bg-[#E8E7DF] px-1.5 py-0.5 rounded-[2px]">
+              {locationTerm || 'Worldwide / Any Location'}
+            </span>
+            <span>•</span>
+            <span>Role:</span>
             <span className="text-[#20251F] font-semibold">
               {roleTerm || 'All Roles'}
             </span>
             <span>•</span>
-            <span className="text-[#20251F] font-semibold">
-              {locationTerm || 'Worldwide / Any Location'}
-            </span>
-            <span>•</span>
-            <span>{workModeFilter}</span>
+            <span>Mode: {workModeFilter}</span>
           </div>
           <button
             type="button"
@@ -265,7 +306,7 @@ export const JobDiscoveryPage: React.FC<JobDiscoveryPageProps> = ({
         <div className="surface-card p-12 text-center space-y-3 font-mono text-xs text-[#686C63]">
           <Loader2 size={28} className="animate-spin mx-auto text-[#20251F]" />
           <p className="font-semibold text-[#20251F]">Querying authorized job providers...</p>
-          <p className="text-[11px]">Connecting to Adzuna, The Muse, and Remotive with your verified filters.</p>
+          <p className="text-[11px]">Searching The Muse, Remotive, and Arbeitnow for verified vacancies in {locationTerm || 'all locations'}.</p>
         </div>
       )}
 
@@ -275,15 +316,15 @@ export const JobDiscoveryPage: React.FC<JobDiscoveryPageProps> = ({
           <Inbox size={36} strokeWidth={1.5} className="mx-auto text-[#686C63]" />
           <h3 className="font-serif text-2xl text-[#20251F]">No Matching Genuine Job Opportunities</h3>
           <p className="text-xs text-[#686C63] max-w-md mx-auto leading-relaxed">
-            No live job records matched your specific role or location ({locationTerm || 'Any'}).
-            GigSync strictly avoids generating fabricated companies or placeholder listings.
+            No live job records currently match your specific location ({locationTerm || 'Worldwide'}).
+            GigSync strictly avoids fabricating placeholder companies or misrepresenting job locations to increase counts.
           </p>
           <div className="flex items-center justify-center gap-3 pt-2">
             <button
               onClick={() => {
-                setLocationTerm('Remote');
+                setLocationTerm('India');
                 setWorkModeFilter('Remote');
-                executeSearch(roleTerm, 'Remote', 'Remote', expLevelFilter);
+                executeSearch(roleTerm, 'India', 'Remote', expLevelFilter);
               }}
               className="btn-editorial btn-editorial-primary text-xs px-4 py-2"
             >
@@ -297,7 +338,7 @@ export const JobDiscoveryPage: React.FC<JobDiscoveryPageProps> = ({
               }}
               className="btn-editorial btn-editorial-outline text-xs px-4 py-2"
             >
-              Clear Location Filter
+              Broaden / Clear Location Filter
             </button>
           </div>
         </div>
@@ -306,6 +347,8 @@ export const JobDiscoveryPage: React.FC<JobDiscoveryPageProps> = ({
           {localJobs.map(job => {
             const saved = isJobSaved(job.id);
             const score = typeof job.matchScore === 'number' ? job.matchScore : 0;
+            const countryTag = detectCountry(job.location);
+            const remoteEligibility = extractRemoteEligibility(job);
 
             return (
               <div
@@ -315,7 +358,7 @@ export const JobDiscoveryPage: React.FC<JobDiscoveryPageProps> = ({
               >
                 <div className="flex items-start justify-between flex-wrap gap-4">
                   <div className="space-y-1">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <h2 className="font-serif text-2xl text-[#20251F] hover:text-[#D9534F] transition-colors">
                         {job.title}
                       </h2>
@@ -326,14 +369,24 @@ export const JobDiscoveryPage: React.FC<JobDiscoveryPageProps> = ({
                       )}
                     </div>
 
-                    <div className="text-xs text-[#686C63] flex items-center gap-2 flex-wrap">
+                    <div className="text-xs text-[#686C63] flex items-center gap-2 flex-wrap pt-0.5">
                       <span className="font-semibold text-[#20251F]">{job.company}</span>
                       <span>•</span>
-                      <span className="flex items-center gap-0.5">
-                        <MapPin size={11} /> {job.location}
+                      <span className="flex items-center gap-0.5 font-medium text-[#20251F]">
+                        <MapPin size={11} /> Actual Location: {job.location}
                       </span>
+                      {countryTag && (
+                        <span className="tag-mono text-[10px] bg-[#E8E7DF] text-[#20251F]">
+                          {countryTag}
+                        </span>
+                      )}
                       <span>•</span>
-                      <span className="tag-mono text-[11px]">{job.workMode}</span>
+                      <span className="tag-mono text-[11px] font-semibold">{job.workMode}</span>
+                      {remoteEligibility && (
+                        <span className="tag-mono text-[10px] bg-[#D1E7DD] text-[#0F5132] border border-[#BADBCC] flex items-center gap-1">
+                          <Globe size={10} /> Eligible: {remoteEligibility}
+                        </span>
+                      )}
                       <span className="tag-mono text-[11px]">{job.experienceLevel}</span>
                       {job.salaryRange && (
                         <>

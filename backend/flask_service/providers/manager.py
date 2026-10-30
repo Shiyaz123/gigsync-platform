@@ -1,9 +1,10 @@
 """
 Job Provider Manager.
-Coordinates active job providers (Adzuna, The Muse, Remotive),
-orchestrates searches, applies deduplication and location filters,
+Coordinates active job providers (Adzuna, The Muse, Remotive, Arbeitnow),
+orchestrates searches, prioritizes local on-site vacancies before remote options,
 and maintains in-memory lookups for job details.
 """
+import re
 import logging
 from typing import Dict, Any, List, Optional
 from collections import OrderedDict
@@ -11,13 +12,13 @@ from collections import OrderedDict
 try:
     from .base import BaseJobProvider, UnifiedJobListing
     from .adzuna_provider import AdzunaProvider
-    from .themuse_provider import TheMuseProvider
+    from .themuse_provider import TheMuseProvider, CITY_ALIASES
     from .remotive_provider import RemotiveProvider
     from .arbeitnow_provider import ArbeitnowProvider
 except ImportError:
     from base import BaseJobProvider, UnifiedJobListing
     from adzuna_provider import AdzunaProvider
-    from themuse_provider import TheMuseProvider
+    from themuse_provider import TheMuseProvider, CITY_ALIASES
     from remotive_provider import RemotiveProvider
     from arbeitnow_provider import ArbeitnowProvider
 
@@ -33,7 +34,6 @@ class JobProviderManager:
             "remotive": RemotiveProvider(),
             "arbeitnow": ArbeitnowProvider()
         }
-        # In-memory LRU store for recently fetched job details (capacity: 500)
         self._job_cache: OrderedDict[str, UnifiedJobListing] = OrderedDict()
         self._max_cache_size = 500
 
@@ -74,9 +74,15 @@ class JobProviderManager:
         """
         Executes search across eligible providers.
         Guarantees that results are genuine and meet location criteria.
+        Prioritizes verified local on-site matches before remote listings.
         """
         results: List[UnifiedJobListing] = []
         seen_titles_companies = set()
+
+        loc_lower = (location or "").strip().lower()
+        is_specific_city = any(c in loc_lower for c in CITY_ALIASES)
+        is_remote_mode = (work_mode or "").lower() == "remote"
+        is_onsite_mode = (work_mode or "").lower() == "on-site"
 
         # Determine target providers to invoke
         active_providers: List[BaseJobProvider] = []
@@ -84,22 +90,26 @@ class JobProviderManager:
         if provider_preference and provider_preference.lower() in self.providers:
             active_providers.append(self.providers[provider_preference.lower()])
         else:
-            # If Adzuna is configured, prioritize Adzuna for location-specific queries
+            # 1. Prioritize local location providers (The Muse, Adzuna)
             adzuna = self.providers["adzuna"]
             if adzuna.is_configured():
                 active_providers.append(adzuna)
 
-            # For remote or all modes, add Remotive
-            if not work_mode or work_mode.lower() in ["all", "remote"]:
-                active_providers.append(self.providers["remotive"])
-
-            # Add The Muse for US / Tech roles
             active_providers.append(self.providers["themuse"])
 
-            # Add Arbeitnow for EU / Remote / Global tech roles
-            active_providers.append(self.providers["arbeitnow"])
+            # 2. Add Arbeitnow for EU / Germany / remote
+            if not any(k in loc_lower for k in ["india", "bengaluru", "mumbai", "delhi", "san jose", "san francisco"]):
+                active_providers.append(self.providers["arbeitnow"])
 
-        errors = []
+            # 3. For remote or general country searches, add Remotive
+            # If user specified a specific city on-site/all, do NOT flood with Remotive
+            if not is_onsite_mode:
+                if is_remote_mode or not is_specific_city:
+                    active_providers.append(self.providers["remotive"])
+
+        local_matches: List[UnifiedJobListing] = []
+        remote_matches: List[UnifiedJobListing] = []
+
         for provider in active_providers:
             try:
                 provider_jobs = provider.search_jobs(
@@ -113,21 +123,24 @@ class JobProviderManager:
                     timeout=timeout
                 )
                 for job in provider_jobs:
-                    # Deduplicate by normalized title + company
                     key = (job.title.strip().lower(), job.company.strip().lower())
                     if key not in seen_titles_companies:
                         seen_titles_companies.add(key)
-                        results.append(job)
+                        if job.workMode == "Remote":
+                            remote_matches.append(job)
+                        else:
+                            local_matches.append(job)
 
             except PermissionError as pe:
                 logger.warning(f"Provider {provider.provider_name} auth failure: {pe}")
-                errors.append(str(pe))
             except TimeoutError as te:
                 logger.warning(f"Provider {provider.provider_name} timed out: {te}")
-                errors.append(str(te))
             except Exception as e:
                 logger.error(f"Provider {provider.provider_name} search error: {e}")
-                errors.append(str(e))
+
+        # Local listings are always prioritized before remote
+        results.extend(local_matches)
+        results.extend(remote_matches)
 
         # Cache the results
         self.cache_jobs(results)

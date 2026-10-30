@@ -91,12 +91,17 @@ export async function searchRealWorldJobs(options: {
 
   const locCriteria = parseLocationQuery(location);
 
+  // Rule A: Missing, ambiguous, or unrecognized location returns honest 0 vacancies
+  if (locCriteria.isUnrecognized) {
+    return [];
+  }
+
   // Determine provider query parameters based on canonical location
   let museLocationParam = '';
   if (locCriteria.city && locCriteria.countryCode === 'IN') {
     museLocationParam = `&location=${encodeURIComponent(locCriteria.city + ', India')}`;
   } else if (locCriteria.city && locCriteria.countryCode === 'US') {
-    museLocationParam = `&location=${encodeURIComponent(locCriteria.city + ', CA')}`;
+    museLocationParam = `&location=${encodeURIComponent(locCriteria.city + ', ' + (locCriteria.state || 'CA'))}`;
   } else if (locCriteria.isRemoteOnly) {
     museLocationParam = `&location=${encodeURIComponent('Flexible / Remote')}`;
   }
@@ -105,7 +110,6 @@ export async function searchRealWorldJobs(options: {
   const [museRes, remotiveRes, arbeitnowRes] = await Promise.allSettled([
     // 1. The Muse (US, India, UK, Global corporate)
     (async () => {
-      // Query specific location if known, else standard category feed
       const urlsToTry = [
         `https://www.themuse.com/api/public/jobs?category=Software+Engineering&page=0${museLocationParam}`
       ];
@@ -136,7 +140,7 @@ export async function searchRealWorldJobs(options: {
             const isJobRemote = locStr.toLowerCase().includes('remote') || locStr.toLowerCase().includes('flexible');
 
             // Location filtering using Location Engine
-            const { isMatch } = isJobLocationMatch(locStr, isJobRemote, locCriteria, locs);
+            const { isMatch, eligibility } = isJobLocationMatch(locStr, isJobRemote, locCriteria, locs, workMode);
             if (!isMatch) continue;
 
             let detectedMode: 'Remote' | 'Hybrid' | 'On-site' = 'On-site';
@@ -160,9 +164,12 @@ export async function searchRealWorldJobs(options: {
             const skills = extractSkills(`${title} ${desc}`);
             const applyUrl = item.refs?.landing_page || `https://www.themuse.com/job/redirect/${item.id}`;
 
+            const constraints = [`Verified Location: ${locStr}`];
+            if (eligibility) constraints.push(`Geographic Eligibility: ${eligibility}`);
+
             out.push({
               id: `themuse_${item.id}`,
-              source: 'Company Direct',
+              source: 'The Muse',
               sourceJobId: String(item.id),
               title,
               company,
@@ -174,7 +181,7 @@ export async function searchRealWorldJobs(options: {
               requirements: {
                 essentialSkills: skills.essential,
                 preferredSkills: skills.preferred,
-                constraints: [`Eligible for ${detectedMode} work in ${locStr}`],
+                constraints,
                 minYearsExperience: detectedExp === 'Internship' || detectedExp === 'Entry-level' ? 0 : 1
               },
               postedAt: item.publication_date || new Date().toISOString(),
@@ -189,7 +196,9 @@ export async function searchRealWorldJobs(options: {
 
     // 2. Remotive (Remote vacancies with explicit candidate geographic eligibility)
     (async () => {
+      // If candidate is searching for on-site positions, or specifically searching for a city on-site, skip general remote feed
       if (workMode === 'On-site') return [];
+      if (locCriteria.isSpecificCity && workMode !== 'Remote') return [];
 
       const tokens = role ? role.toLowerCase().split(/[\s,&/]+/).filter(t => t.length > 2) : [];
       const searchParam = tokens.length ? `&search=${encodeURIComponent(tokens[0])}` : '';
@@ -208,7 +217,7 @@ export async function searchRealWorldJobs(options: {
         if (tokens.length && !tokens.some(t => fullText.includes(t))) continue;
 
         // Verify remote eligibility for candidate's location criteria
-        const { isMatch } = isJobLocationMatch(`Remote (${candReqLoc})`, true, locCriteria, [candReqLoc]);
+        const { isMatch, eligibility } = isJobLocationMatch(`Remote (${candReqLoc})`, true, locCriteria, [candReqLoc], workMode);
         if (!isMatch) continue;
 
         let detectedExp: 'Internship' | 'Entry-level' | 'Junior' | 'Mid-level' = 'Entry-level';
@@ -224,7 +233,7 @@ export async function searchRealWorldJobs(options: {
 
         out.push({
           id: `remotive_${item.id}`,
-          source: 'Curated Partner',
+          source: 'Remotive',
           sourceJobId: String(item.id),
           title,
           company,
@@ -236,7 +245,7 @@ export async function searchRealWorldJobs(options: {
           requirements: {
             essentialSkills,
             preferredSkills: prefSkills,
-            constraints: [`Eligible location: ${candReqLoc}`],
+            constraints: [`Geographic Eligibility: ${candReqLoc}`],
             minYearsExperience: detectedExp === 'Internship' || detectedExp === 'Entry-level' ? 0 : 1
           },
           postedAt: item.publication_date || new Date().toISOString(),
@@ -249,8 +258,11 @@ export async function searchRealWorldJobs(options: {
 
     // 3. Arbeitnow (European on-site / German / EU remote vacancies)
     (async () => {
-      // If candidate is specifically in India or US, Arbeitnow on-site EU jobs should NOT be queried
+      // If candidate is specifically in India or US and not searching globally, skip Arbeitnow
       if (locCriteria.countryCode === 'IN' || locCriteria.countryCode === 'US') {
+        return [];
+      }
+      if (locCriteria.isSpecificCity && locCriteria.countryCode !== 'DE') {
         return [];
       }
 
@@ -273,7 +285,7 @@ export async function searchRealWorldJobs(options: {
           if (tokens.length && !tokens.some(t => fullText.includes(t))) continue;
         }
 
-        const { isMatch } = isJobLocationMatch(locStr, isRemote, locCriteria, [locStr]);
+        const { isMatch, eligibility } = isJobLocationMatch(locStr, isRemote, locCriteria, [locStr], workMode);
         if (!isMatch) continue;
 
         let detectedMode: 'Remote' | 'Hybrid' | 'On-site' = isRemote ? 'Remote' : 'On-site';
@@ -293,7 +305,7 @@ export async function searchRealWorldJobs(options: {
         const skills = extractSkills(`${title} ${desc}`);
         out.push({
           id: `arbeitnow_${(item.slug || '').slice(-24)}`,
-          source: 'Company Direct',
+          source: 'Arbeitnow',
           sourceJobId: String(item.slug || item.id || ''),
           title,
           company,
@@ -305,7 +317,7 @@ export async function searchRealWorldJobs(options: {
           requirements: {
             essentialSkills: skills.essential,
             preferredSkills: skills.preferred,
-            constraints: [`Eligible for ${detectedMode} work in ${locStr}`],
+            constraints: [`Verified Location: ${locStr}`],
             minYearsExperience: detectedExp === 'Internship' || detectedExp === 'Entry-level' ? 0 : 1
           },
           postedAt: item.created_at ? new Date(item.created_at * 1000).toISOString() : new Date().toISOString(),

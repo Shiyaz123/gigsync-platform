@@ -127,7 +127,7 @@ export interface JobRequirements {
 
 export interface JobListing {
   id: string;
-  source: 'LinkedIn' | 'Indeed' | 'Handshake' | 'Company Direct' | 'Curated Partner';
+  source: 'LinkedIn' | 'Indeed' | 'Handshake' | 'Company Direct' | 'Curated Partner' | 'The Muse' | 'Remotive' | 'Arbeitnow' | string;
   sourceJobId: string;
   title: string;
   company: string;
