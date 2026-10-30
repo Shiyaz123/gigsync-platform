@@ -244,6 +244,24 @@ export const api = {
     });
   },
 
+  // Interactive AI Resume Editor Chatbot
+  async editResumeWithAi(instruction: string, currentProfile: CandidateProfile, history?: any[]): Promise<{
+    reply: string;
+    operations: any[];
+    updatedProfile: CandidateProfile;
+    suggestedQuickReplies?: string[];
+  }> {
+    return request<{
+      reply: string;
+      operations: any[];
+      updatedProfile: CandidateProfile;
+      suggestedQuickReplies?: string[];
+    }>('/ai/resume-edit', {
+      method: 'POST',
+      body: JSON.stringify({ instruction, currentProfile, history })
+    });
+  },
+
   // Jobs
   async getJobs(filters?: {
     keyword?: string;

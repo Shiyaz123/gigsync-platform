@@ -16,7 +16,7 @@ import {
 import { calculateJobMatch } from './services/matchingEngine';
 import { generateLatexResume } from './services/latexService';
 import { parseResumeText } from './services/parserService';
-import { processAssistantTurn, AssistantState } from './services/aiAssistantService';
+import { executeResumeEditInstruction } from './services/aiAssistantService';
 import { searchRealWorldJobs } from './services/realJobService';
 import {
   CandidateProfile,
@@ -419,46 +419,44 @@ app.post('/api/parser/parse', (req: Request, res: Response) => {
 });
 
 // --------------------------------------------------------------------------
-// Conversational AI Resume Assistant (Option B)
+// Conversational AI Resume Assistant & Interactive Editor
 // --------------------------------------------------------------------------
-app.get('/api/ai/resume-assistant', (req: Request, res: Response) => {
-  const initialState: AssistantState = {
-    currentStep: 'intro',
-    history: [
-      {
-        id: 'welcome_1',
-        sender: 'assistant',
-        text: 'Welcome to the GigSync AI Resume Assistant. I will guide you through turning your existing projects, coursework, and experience into a structured, truthful profile. What is your full name and target engineering role?',
-        step: 'intro',
-        suggestedQuickReplies: ['Software Engineer', 'Full-Stack Developer', 'Frontend Engineer', 'Data Scientist']
-      }
-    ],
-    draftProfile: {}
-  };
-  res.json({ state: initialState, reply: initialState.history[0] });
+app.post('/api/ai/resume-edit', async (req: Request, res: Response) => {
+  try {
+    const { instruction, currentProfile, history } = req.body || {};
+    if (!instruction) {
+      return res.status(400).json({ error: 'Instruction is required.' });
+    }
+    const result = await executeResumeEditInstruction(instruction, currentProfile || DEFAULT_GUEST_PROFILE, history);
+    res.json(result);
+  } catch (err: any) {
+    console.error('Resume edit error:', err);
+    res.status(500).json({ error: 'Failed to process resume edit instruction' });
+  }
 });
 
-app.post('/api/ai/resume-assistant', (req: Request, res: Response) => {
-  const { userText, currentState } = req.body || {};
-  if (!currentState) {
-    const initialState: AssistantState = {
-      currentStep: 'intro',
-      history: [
-        {
-          id: 'welcome_1',
-          sender: 'assistant',
-          text: 'Welcome to the GigSync AI Resume Assistant. I will guide you through turning your existing projects, coursework, and experience into a structured, truthful profile. What is your full name and target engineering role?',
-          step: 'intro',
-          suggestedQuickReplies: ['Software Engineer', 'Full-Stack Developer', 'Frontend Engineer', 'Data Scientist']
-        }
-      ],
-      draftProfile: {}
-    };
-    return res.json({ state: initialState, reply: initialState.history[0] });
+app.post('/api/ai/resume-assistant', async (req: Request, res: Response) => {
+  try {
+    const { userText, currentState, currentProfile } = req.body || {};
+    const text = userText || currentState?.text || '';
+    const activeProfile = currentProfile || currentState?.draftProfile || DEFAULT_GUEST_PROFILE;
+    const result = await executeResumeEditInstruction(text, activeProfile);
+    res.json({
+      state: {
+        draftProfile: result.updatedProfile,
+        operations: result.operations
+      },
+      reply: {
+        id: `reply_${Date.now()}`,
+        sender: 'assistant',
+        text: result.reply,
+        suggestedQuickReplies: result.suggestedQuickReplies,
+        operations: result.operations
+      }
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Assistant service error' });
   }
-
-  const result = processAssistantTurn(userText || '', currentState);
-  res.json({ state: result.nextState, reply: result.reply });
 });
 
 // --------------------------------------------------------------------------

@@ -56,6 +56,26 @@ export interface CertificationItem {
   confirmed: boolean;
 }
 
+export interface TechnicalSkillsCategories {
+  programmingLanguages: string[];
+  backendAndApis: string[];
+  databases: string[];
+  testing: string[];
+  toolsAndDevelopment: string[];
+  frontend: string[];
+  csFundamentals: string[];
+  aiAndMl: string[];
+}
+
+export interface PublicationItem {
+  id: string;
+  title: string;
+  publisher?: string;
+  date?: string;
+  url?: string;
+  description?: string;
+}
+
 export interface CandidateProfile {
   userId: string;
   personalInfo: {
@@ -69,16 +89,44 @@ export interface CandidateProfile {
     github?: string;
     portfolio?: string;
   };
-  education: EducationItem[];
-  experience: ExperienceItem[];
-  projects: ProjectItem[];
+  education: (EducationItem & {
+    branch?: string;
+    graduationYear?: string;
+    cgpa?: string;
+  })[];
+  experience: (ExperienceItem & {
+    employmentType?: string;
+    duration?: string;
+    responsibilities?: string[];
+  })[];
+  projects: (ProjectItem & {
+    technologies?: string[];
+    keyFeatures?: string[];
+    githubUrl?: string;
+  })[];
   skills: {
     technical: string[];
     frameworks: string[];
     tools: string[];
     soft: string[];
+    categories?: TechnicalSkillsCategories;
   };
-  certifications: CertificationItem[];
+  categorizedSkills?: TechnicalSkillsCategories;
+  certifications: (CertificationItem & {
+    organization?: string;
+    completionDate?: string;
+    credentialLink?: string;
+  })[];
+  achievements?: string[];
+  mentorshipAndLeadership?: string[];
+  publications?: PublicationItem[];
+  extracurricularActivities?: string[];
+  languagesKnown?: string[];
+  interests?: string[];
+  sectionOrder?: string[];
+  sectionNames?: Record<string, string>;
+  hiddenSections?: string[];
+  layoutSpacing?: 'compact' | 'normal' | 'spacious';
   careerPreferences: {
     targetRoles: string[];
     workModes: ('Remote' | 'Hybrid' | 'On-site')[];

@@ -1,10 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import {
-  CandidateProfile,
-  JobListing,
-  ResumeVersion
-} from '../types';
+import { CandidateProfile, JobListing, ResumeVersion } from '../types';
 import { api } from '../services/api';
+import { ResumeTemplateRenderer } from '../components/templates/ResumeTemplateRenderer';
 import {
   FileText,
   Download,
@@ -245,117 +242,12 @@ export const ResumeStudioPage: React.FC<ResumeStudioPageProps> = ({
 
       {/* Mode 1: Printable Document Sheet Preview */}
       {viewMode === 'preview' && (
-        <div className="p-8 sm:p-12 bg-[#E8E7DF] border border-[#D5D5CC] rounded-[3px] flex justify-center">
-          <div className="w-full max-w-3xl bg-[#FFFFFF] p-10 sm:p-14 border border-[#D5D5CC] shadow-sm text-[#20251F] font-sans space-y-6">
-            {/* Header */}
-            <div className="text-center pb-4 border-b border-[#20251F]">
-              <h1 className="font-serif text-3xl sm:text-4xl tracking-tight text-[#20251F]">
-                {profile.personalInfo.fullName || 'Candidate Name'}
-              </h1>
-              <div className="text-xs font-mono text-[#686C63] mt-1 font-semibold">
-                {profile.personalInfo.title || 'Software Engineer'}
-              </div>
-              <div className="text-xs font-mono text-[#686C63] mt-2 flex justify-center gap-3 flex-wrap">
-                <span>{profile.personalInfo.location}</span>
-                <span>•</span>
-                <span>{profile.personalInfo.email}</span>
-                <span>•</span>
-                <span>{profile.personalInfo.phone}</span>
-                {profile.personalInfo.github && <span>• GitHub</span>}
-                {profile.personalInfo.linkedin && <span>• LinkedIn</span>}
-              </div>
-            </div>
-
-            {/* Summary */}
-            {profile.personalInfo.summary && (
-              <div className="space-y-1">
-                <h2 className="font-mono text-xs uppercase text-[#20251F] font-bold tracking-wider border-b border-[#D5D5CC] pb-1">
-                  Professional Summary
-                </h2>
-                <p className="text-xs text-[#20251F] leading-relaxed pt-1 font-normal">
-                  {profile.personalInfo.summary}
-                </p>
-              </div>
-            )}
-
-            {/* Technical Skills */}
-            <div className="space-y-1">
-              <h2 className="font-mono text-xs uppercase text-[#20251F] font-bold tracking-wider border-b border-[#D5D5CC] pb-1">
-                Technical Qualifications
-              </h2>
-              <div className="text-xs text-[#20251F] space-y-0.5 pt-1">
-                <div><strong>Languages:</strong> {profile.skills.technical.join(', ')}</div>
-                <div><strong>Frameworks & Libraries:</strong> {profile.skills.frameworks.join(', ')}</div>
-                <div><strong>Tools & Platforms:</strong> {profile.skills.tools.join(', ')}</div>
-              </div>
-            </div>
-
-            {/* Education */}
-            {profile.education.length > 0 && (
-              <div className="space-y-2">
-                <h2 className="font-mono text-xs uppercase text-[#20251F] font-bold tracking-wider border-b border-[#D5D5CC] pb-1">
-                  Education
-                </h2>
-                {profile.education.map(e => (
-                  <div key={e.id} className="text-xs space-y-0.5">
-                    <div className="flex justify-between font-semibold">
-                      <span>{e.institution}</span>
-                      <span className="font-mono text-[#686C63]">{e.startDate} – {e.endDate}</span>
-                    </div>
-                    <div className="flex justify-between text-[#686C63] italic">
-                      <span>{e.degree} in {e.fieldOfStudy}</span>
-                      {e.gpa && <span>GPA: {e.gpa}</span>}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Experience */}
-            {profile.experience.length > 0 && (
-              <div className="space-y-3">
-                <h2 className="font-mono text-xs uppercase text-[#20251F] font-bold tracking-wider border-b border-[#D5D5CC] pb-1">
-                  Experience & Internships
-                </h2>
-                {profile.experience.map(exp => (
-                  <div key={exp.id} className="text-xs space-y-1">
-                    <div className="flex justify-between font-semibold">
-                      <span>{exp.company} — {exp.role}</span>
-                      <span className="font-mono text-[#686C63]">{exp.startDate} – {exp.current ? 'Present' : exp.endDate}</span>
-                    </div>
-                    <ul className="list-disc pl-4 space-y-1 text-[#20251F]">
-                      {exp.bullets.map((b, i) => (
-                        <li key={i}>{b}</li>
-                      ))}
-                    </ul>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Projects */}
-            {profile.projects.length > 0 && (
-              <div className="space-y-3">
-                <h2 className="font-mono text-xs uppercase text-[#20251F] font-bold tracking-wider border-b border-[#D5D5CC] pb-1">
-                  Technical Projects
-                </h2>
-                {profile.projects.map(proj => (
-                  <div key={proj.id} className="text-xs space-y-1">
-                    <div className="flex justify-between font-semibold">
-                      <span>{proj.title}</span>
-                      <span className="font-mono text-[#686C63]">{proj.techStack.join(' | ')}</span>
-                    </div>
-                    {proj.description && <p className="text-[#686C63] italic">{proj.description}</p>}
-                    <ul className="list-disc pl-4 space-y-1 text-[#20251F]">
-                      {proj.bullets.map((b, i) => (
-                        <li key={i}>{b}</li>
-                      ))}
-                    </ul>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+        <div className="p-4 sm:p-10 bg-[#E8E7DF] border border-[#D5D5CC] rounded-[3px] flex justify-center">
+          <ResumeTemplateRenderer
+            templateId={selectedTemplate}
+            profile={profile}
+            className="w-full flex justify-center"
+          />
         </div>
       )}
 
