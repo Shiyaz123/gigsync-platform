@@ -466,17 +466,24 @@ app.post('/api/ai/resume-assistant', async (req: Request, res: Response) => {
 app.get('/api/jobs', async (req: Request, res: Response) => {
   const { keyword, role, workMode, work_mode, experienceLevel, experience_level, experience, location, page, limit } = req.query;
 
+  // Read confirmed profile coordinates from session as authoritative baseline
+  const sessionLoc = (currentProfile?.personalInfo?.location || currentProfile?.careerPreferences?.targetLocations?.[0] || '').trim();
+  const sessionRole = (currentProfile?.personalInfo?.title || currentProfile?.careerPreferences?.targetRoles?.[0] || 'Software Engineer').trim();
+  const sessionWorkMode = (currentProfile?.careerPreferences?.workModes?.[0] || 'All').trim();
+
+  // If query provides a location, use it; otherwise use the confirmed resume location
+  const effectiveLocation = (typeof location === 'string' && location.trim() ? location.trim() : sessionLoc);
+  const searchRole = ((role || keyword || '') as string).trim() || sessionRole;
+  const resolvedWorkMode = ((workMode || work_mode || '') as string).trim() || 'All';
+  const resolvedExp = ((experienceLevel || experience_level || experience || '') as string).trim() || 'All';
+
+  const reqId = `jobsearch_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+
   const params = new URLSearchParams();
-  const searchRole = (role || keyword || '') as string;
   if (searchRole) params.append('role', searchRole);
-  if (location && typeof location === 'string') params.append('location', location);
-
-  const resolvedWorkMode = (workMode || work_mode || 'All') as string;
+  if (effectiveLocation) params.append('location', effectiveLocation);
   if (resolvedWorkMode && resolvedWorkMode !== 'All') params.append('work_mode', resolvedWorkMode);
-
-  const resolvedExp = (experienceLevel || experience_level || experience || 'All') as string;
   if (resolvedExp && resolvedExp !== 'All') params.append('experience_level', resolvedExp);
-
   if (page) params.append('page', String(page));
   if (limit) params.append('limit', String(limit));
 
@@ -512,16 +519,20 @@ app.get('/api/jobs', async (req: Request, res: Response) => {
     try {
       const liveRealJobs = await searchRealWorldJobs({
         role: searchRole || undefined,
-        location: (location as string) || undefined,
+        location: effectiveLocation || undefined,
         workMode: resolvedWorkMode !== 'All' ? resolvedWorkMode : undefined,
         experienceLevel: resolvedExp !== 'All' ? resolvedExp : undefined,
-        limit: limit ? Number(limit) : 20
+        limit: limit ? Number(limit) : 20,
+        requestId: reqId,
+        resumeLocation: sessionLoc,
+        resumeRole: sessionRole,
+        resumeWorkMode: sessionWorkMode
       });
       if (liveRealJobs.length > 0) {
         rawJobs = liveRealJobs;
       }
     } catch (realErr: any) {
-      console.warn('[GigSync] Direct external job query notice:', realErr.message);
+      console.warn(`[GigSync] Direct external job query notice [${reqId}]:`, realErr.message);
     }
   }
 

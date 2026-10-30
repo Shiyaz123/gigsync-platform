@@ -27,7 +27,7 @@ interface CityMapping {
 }
 
 // Canonical city directory with verified provider query mappings
-const CITY_MAP: Record<string, CityMapping> = {
+export const CITY_MAP: Record<string, CityMapping> = {
   // India
   'bengaluru': { city: 'Bangalore', aliases: ['bengaluru', 'bangalore'], countryCode: 'IN', countryName: 'India', state: 'Karnataka', museQuery: 'Bangalore, India' },
   'bangalore': { city: 'Bangalore', aliases: ['bengaluru', 'bangalore'], countryCode: 'IN', countryName: 'India', state: 'Karnataka', museQuery: 'Bangalore, India' },

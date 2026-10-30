@@ -262,16 +262,19 @@ export const api = {
   },
 
   // Jobs
-  async getJobs(filters?: {
-    keyword?: string;
-    role?: string;
-    workMode?: string;
-    experienceLevel?: string;
-    location?: string;
-    skills?: string[];
-    page?: number;
-    limit?: number;
-  }): Promise<JobListing[]> {
+  async getJobs(
+    filters?: {
+      keyword?: string;
+      role?: string;
+      workMode?: string;
+      experienceLevel?: string;
+      location?: string;
+      skills?: string[];
+      page?: number;
+      limit?: number;
+    },
+    options?: RequestInit
+  ): Promise<JobListing[]> {
     const params = new URLSearchParams();
     if (filters?.role) params.append('role', filters.role);
     if (filters?.keyword) params.append('keyword', filters.keyword);
@@ -283,7 +286,7 @@ export const api = {
     if (filters?.limit) params.append('limit', String(filters.limit));
 
     const query = params.toString() ? `?${params.toString()}` : '';
-    const res = await request<any>(`/jobs${query}`);
+    const res = await request<any>(`/jobs${query}`, options);
     return Array.isArray(res) ? res : (res.jobs || []);
   },
 

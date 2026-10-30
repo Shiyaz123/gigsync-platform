@@ -1,7 +1,7 @@
 import https from 'https';
 import http from 'http';
 import { JobListing, JobRequirements } from '../types';
-import { parseLocationQuery, isJobLocationMatch } from './locationService';
+import { parseLocationQuery, isJobLocationMatch, CITY_MAP } from './locationService';
 
 function cleanHtml(raw: string): string {
   if (!raw) return '';
@@ -85,24 +85,46 @@ export async function searchRealWorldJobs(options: {
   workMode?: string;
   experienceLevel?: string;
   limit?: number;
+  requestId?: string;
+  resumeLocation?: string;
+  resumeRole?: string;
+  resumeWorkMode?: string;
 }): Promise<JobListing[]> {
-  const { role, location, workMode, experienceLevel, limit = 20 } = options;
+  const { role, location, workMode, experienceLevel, limit = 20, requestId = `req_${Date.now()}`, resumeLocation, resumeRole, resumeWorkMode } = options;
   const results: JobListing[] = [];
   const seenKeys = new Set<string>();
 
   const locCriteria = parseLocationQuery(location);
 
+  let museRawCount = 0;
+  let museFilteredCount = 0;
+  let remotiveRawCount = 0;
+  let remotiveFilteredCount = 0;
+  let arbeitnowRawCount = 0;
+  let arbeitnowFilteredCount = 0;
+
   // Rule A: Missing, ambiguous, or unrecognized location returns honest 0 vacancies
   if (locCriteria.isUnrecognized) {
+    console.info(`[JobSearchTelemetry][${requestId}] Unrecognized location "${location}". Returning 0 vacancies.`);
     return [];
   }
 
   // Determine provider query parameters based on canonical location
   let museLocationParam = '';
-  if (locCriteria.city && locCriteria.countryCode === 'IN') {
-    museLocationParam = `&location=${encodeURIComponent(locCriteria.city + ', India')}`;
-  } else if (locCriteria.city && locCriteria.countryCode === 'US') {
-    museLocationParam = `&location=${encodeURIComponent(locCriteria.city + ', ' + (locCriteria.state || 'CA'))}`;
+  if (locCriteria.city) {
+    const cityKey = locCriteria.city.toLowerCase();
+    const cityEntry = CITY_MAP[cityKey] || Object.values(CITY_MAP).find(c => c.city.toLowerCase() === cityKey);
+    if (cityEntry?.museQuery) {
+      museLocationParam = `&location=${encodeURIComponent(cityEntry.museQuery)}`;
+    } else if (locCriteria.countryCode === 'IN') {
+      museLocationParam = `&location=${encodeURIComponent(locCriteria.city + ', India')}`;
+    } else if (locCriteria.countryCode === 'US') {
+      museLocationParam = `&location=${encodeURIComponent(locCriteria.city + ', ' + (locCriteria.state || 'CA'))}`;
+    } else {
+      museLocationParam = `&location=${encodeURIComponent(locCriteria.city + (locCriteria.countryName ? ', ' + locCriteria.countryName : ''))}`;
+    }
+  } else if (locCriteria.countryName && locCriteria.countryCode) {
+    museLocationParam = `&location=${encodeURIComponent(locCriteria.countryName)}`;
   } else if (locCriteria.isRemoteOnly) {
     museLocationParam = `&location=${encodeURIComponent('Flexible / Remote')}`;
   }
@@ -123,6 +145,7 @@ export async function searchRealWorldJobs(options: {
         try {
           const data = await fetchJson(museUrl);
           const jobs = data.results || [];
+          museRawCount += jobs.length;
 
           for (const item of jobs) {
             const title = item.name || '';
@@ -192,6 +215,7 @@ export async function searchRealWorldJobs(options: {
           }
         } catch {}
       }
+      museFilteredCount = out.length;
       return out;
     })(),
 
@@ -206,6 +230,7 @@ export async function searchRealWorldJobs(options: {
       const remotiveUrl = `https://remotive.com/api/remote-jobs?category=software-dev&limit=40${searchParam}`;
       const data = await fetchJson(remotiveUrl);
       const jobs = data.jobs || [];
+      remotiveRawCount += jobs.length;
       const out: JobListing[] = [];
 
       for (const item of jobs) {
@@ -254,6 +279,7 @@ export async function searchRealWorldJobs(options: {
           verified: true
         });
       }
+      remotiveFilteredCount = out.length;
       return out;
     })(),
 
@@ -270,6 +296,7 @@ export async function searchRealWorldJobs(options: {
       const url = 'https://www.arbeitnow.com/api/job-board-api';
       const data = await fetchJson(url);
       const jobs = data.data || [];
+      arbeitnowRawCount += jobs.length;
       const out: JobListing[] = [];
 
       for (const item of jobs) {
@@ -326,6 +353,7 @@ export async function searchRealWorldJobs(options: {
           verified: true
         });
       }
+      arbeitnowFilteredCount = out.length;
       return out;
     })()
   ]);
@@ -357,5 +385,13 @@ export async function searchRealWorldJobs(options: {
   results.push(...localListings);
   results.push(...remoteListings);
 
-  return results.slice(0, limit);
+  const finalResults = results.slice(0, limit);
+
+  console.info(`[JobSearchTelemetry][${requestId}] Confirmed Resume Location: "${resumeLocation || 'None'}", Target Role: "${resumeRole || 'None'}", Work Preference: "${resumeWorkMode || 'All'}"`);
+  console.info(`[JobSearchTelemetry][${requestId}] API Parameters: role="${role || ''}", location="${location || ''}", workMode="${workMode || 'All'}", expLevel="${experienceLevel || 'All'}", limit=${limit}`);
+  console.info(`[JobSearchTelemetry][${requestId}] Provider Raw Counts: The Muse=${museRawCount}, Remotive=${remotiveRawCount}, Arbeitnow=${arbeitnowRawCount}`);
+  console.info(`[JobSearchTelemetry][${requestId}] Location Filtered Counts: The Muse=${museFilteredCount}, Remotive=${remotiveFilteredCount}, Arbeitnow=${arbeitnowFilteredCount}`);
+  console.info(`[JobSearchTelemetry][${requestId}] Final Displayed Results: ${finalResults.length}`);
+
+  return finalResults;
 }

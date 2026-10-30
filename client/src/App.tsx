@@ -219,7 +219,7 @@ export const App: React.FC = () => {
             onNavigate={handleNavigate}
             onUpdateProfile={(updated) => {
               setProfile(updated);
-              api.getJobs().then(setJobs).catch(() => {});
+              setJobs([]);
             }}
             showToast={showToast}
           />
@@ -250,7 +250,7 @@ export const App: React.FC = () => {
             profile={profile}
             onApplyProfile={(updated) => {
               setProfile(updated);
-              api.getJobs().then(setJobs).catch(() => {});
+              setJobs([]);
             }}
             onNavigate={handleNavigate}
             showToast={showToast}
@@ -262,9 +262,7 @@ export const App: React.FC = () => {
             profile={profile}
             onUpdateProfile={(updated) => {
               setProfile(updated);
-              const loc = updated.personalInfo.location || (updated.careerPreferences?.targetLocations?.[0] || '');
-              const role = updated.personalInfo.title || (updated.careerPreferences?.targetRoles?.[0] || 'Software Engineer');
-              api.getJobs({ location: loc, role }).then(setJobs).catch(() => {});
+              setJobs([]);
             }}
             showToast={showToast}
             onNavigateToAssistant={() => setCurrentTab('ai-assistant')}

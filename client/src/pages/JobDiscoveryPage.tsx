@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   JobListing,
   SavedJob
@@ -49,7 +49,12 @@ export const JobDiscoveryPage: React.FC<JobDiscoveryPageProps> = ({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
 
-  // Sync defaultRole and defaultLocation from confirmed profile
+  // Concurrency and race-condition guards
+  const searchRequestIdRef = useRef<number>(0);
+  const lastSearchedKeyRef = useRef<string>('');
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  // Sync defaultRole and defaultLocation from confirmed profile when props change
   useEffect(() => {
     if (defaultRole && defaultRole !== roleTerm) {
       setRoleTerm(defaultRole);
@@ -62,19 +67,17 @@ export const JobDiscoveryPage: React.FC<JobDiscoveryPageProps> = ({
     }
   }, [defaultLocation]);
 
-  // Sync external jobs
+  // Guaranteed immediate initial search using confirmed resume coordinates
   useEffect(() => {
-    if (jobs && jobs.length > 0) {
-      setLocalJobs(jobs);
-    }
-  }, [jobs]);
+    const targetLoc = (defaultLocation || '').trim();
+    const targetRole = (defaultRole || 'Software Engineer').trim();
+    const criteriaKey = `${targetRole}__${targetLoc}__${workModeFilter}__${expLevelFilter}`;
 
-  // Initial load if empty
-  useEffect(() => {
-    if ((!jobs || jobs.length === 0) && !hasSearched) {
-      executeSearch(defaultRole, defaultLocation, workModeFilter, expLevelFilter);
+    // If search with these confirmed criteria has not yet executed, run it immediately on the first search
+    if (lastSearchedKeyRef.current !== criteriaKey) {
+      executeSearch(targetRole, targetLoc, workModeFilter, expLevelFilter);
     }
-  }, [defaultRole, defaultLocation]);
+  }, [defaultLocation, defaultRole]);
 
   const executeSearch = async (
     role: string,
@@ -82,7 +85,18 @@ export const JobDiscoveryPage: React.FC<JobDiscoveryPageProps> = ({
     mode: string,
     exp: string
   ) => {
-    // Immediately clear previous search results to avoid showing stale cached listings
+    // 1. Cancel previous in-flight request if any to prevent race conditions
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
+    const reqId = ++searchRequestIdRef.current;
+    const criteriaKey = `${role.trim()}__${loc.trim()}__${mode}__${exp}`;
+    lastSearchedKeyRef.current = criteriaKey;
+
+    // 2. Immediately clear previous search results to avoid showing stale cached listings while loading
     setLocalJobs([]);
     if (onUpdateJobs) {
       onUpdateJobs([]);
@@ -91,6 +105,8 @@ export const JobDiscoveryPage: React.FC<JobDiscoveryPageProps> = ({
     setErrorMessage(null);
     setHasSearched(true);
 
+    console.info(`[GigSync JobSearch Client #${reqId}] START: role="${role}", location="${loc}", workMode="${mode}", exp="${exp}"`);
+
     try {
       const results = await api.getJobs({
         role: role.trim() || undefined,
@@ -98,23 +114,38 @@ export const JobDiscoveryPage: React.FC<JobDiscoveryPageProps> = ({
         location: loc.trim() || undefined,
         workMode: mode !== 'All' ? mode : undefined,
         experienceLevel: exp !== 'All' ? exp : undefined
-      });
+      }, { signal: controller.signal });
+
+      // 3. Prevent outdated API responses from overwriting newer results
+      if (searchRequestIdRef.current !== reqId) {
+        console.info(`[GigSync JobSearch Client #${reqId}] SUPERSEDED by #${searchRequestIdRef.current}, ignoring.`);
+        return;
+      }
 
       setLocalJobs(results);
       if (onUpdateJobs) {
         onUpdateJobs(results);
       }
+      console.info(`[GigSync JobSearch Client #${reqId}] FINISH: ${results.length} genuine vacancies returned for location="${loc}"`);
     } catch (err: any) {
-      console.error('[GigSync] Job search error:', err);
+      if (err.name === 'AbortError') {
+        return;
+      }
+      if (searchRequestIdRef.current !== reqId) {
+        return;
+      }
+      console.error(`[GigSync JobSearch Client #${reqId}] ERROR:`, err);
       setErrorMessage(
-        err.message || 'Unable to connect to job search provider. Ensure Flask service is running on port 5001.'
+        err.message || 'Unable to connect to job search provider.'
       );
       setLocalJobs([]);
       if (onUpdateJobs) {
         onUpdateJobs([]);
       }
     } finally {
-      setIsLoading(false);
+      if (searchRequestIdRef.current === reqId) {
+        setIsLoading(false);
+      }
     }
   };
 
