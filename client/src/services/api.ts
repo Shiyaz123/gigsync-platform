@@ -10,6 +10,7 @@ import {
   User
 } from '../types';
 import { parseResumeTextClient } from './parserService';
+import { pdfjsLib } from './pdfWorker';
 
 // Resolve API base URL dynamically from Vite environment variables (VITE_API_URL / VITE_BACKEND_URL)
 // Defaults to relative '/api' for same-origin or proxy setups.
@@ -136,8 +137,6 @@ export const api = {
           extractedText = docxResult.value || '';
         } else if (nameLower.endsWith('.pdf')) {
           try {
-            // Import dedicated worker loader to ensure GlobalWorkerOptions.workerSrc is set
-            const { pdfjsLib } = await import('./pdfWorker');
             const arrayBuffer = await file.arrayBuffer();
             const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) });
             const pdfDoc = await loadingTask.promise;
