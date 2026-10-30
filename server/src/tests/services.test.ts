@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { calculateJobMatch, matchesSkillToken, normalizeSkill } from '../services/matchingEngine';
 import { escapeLatex, generateLatexResume } from '../services/latexService';
 import { parseResumeText } from '../services/parserService';
-import { DEFAULT_GUEST_PROFILE } from '../data/seedData';
+import { ALEX_MORGAN_DEMO_PROFILE } from '../data/seedData';
 import { MOCK_TEST_JOB_LISTINGS } from './fixtures/mockJobs';
 
 test('MatchingEngine: normalizes skill tokens correctly', () => {
@@ -21,7 +21,7 @@ test('MatchingEngine: matches skill aliases accurately', () => {
 
 test('MatchingEngine: calculates explainable match score and separates hard constraints', () => {
   const job = MOCK_TEST_JOB_LISTINGS[0]; // Junior Full-Stack Developer
-  const result = calculateJobMatch(DEFAULT_GUEST_PROFILE, job);
+  const result = calculateJobMatch(ALEX_MORGAN_DEMO_PROFILE, job);
 
   assert.ok(result.overallScore > 60, 'Score should be high for matching full-stack profile');
   assert.ok(result.matchedSkills.length >= 3, 'Should match React, TypeScript, Node.js, SQL, Git');
@@ -48,13 +48,13 @@ test('LatexService: escapes special characters to prevent injection', () => {
 });
 
 test('LatexService: generates valid, compilable LaTeX document structure', () => {
-  const latex = generateLatexResume(DEFAULT_GUEST_PROFILE, 'modern');
+  const latex = generateLatexResume(ALEX_MORGAN_DEMO_PROFILE, 'modern');
 
   assert.ok(latex.includes('\\documentclass'), 'Must define documentclass');
   assert.ok(latex.includes('\\begin{document}'), 'Must have begin document');
   assert.ok(latex.includes('\\end{document}'), 'Must have end document');
   assert.ok(latex.includes('Alex Morgan'), 'Must contain candidate name');
-  assert.ok(latex.includes('California State University'), 'Must contain education institution');
+  assert.ok(latex.includes('Example Institute of Technology'), 'Must contain education institution');
 });
 
 test('ParserService: extracts contact and skills without hallucination', () => {

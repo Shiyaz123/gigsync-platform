@@ -9,6 +9,8 @@ import { execFile } from 'child_process';
 import { promisify } from 'util';
 const execFileAsync = promisify(execFile);
 import {
+  ALEX_MORGAN_DEMO_PROFILE,
+  CLEAN_EMPTY_PROFILE,
   DEFAULT_GUEST_PROFILE,
   SEEDED_JOB_LISTINGS,
   SEEDED_LEARNING_RESOURCES
@@ -43,7 +45,7 @@ app.options('*', cors());
 app.use(express.json({ limit: '10mb' }));
 
 // URL normalizer: ensure req.url starts with /api for Vercel serverless / proxy rewrites of API endpoints
-const KNOWN_API_PREFIXES = ['/health', '/auth', '/jobs', '/saved-jobs', '/roadmap', '/profile', '/parser', '/resume', '/match', '/ai'];
+const KNOWN_API_PREFIXES = ['/health', '/auth', '/jobs', '/saved-jobs', '/roadmap', '/profile', '/parser', '/resume', '/match', '/ai', '/demo'];
 app.use((req, res, next) => {
   if (!req.url.startsWith('/api') && KNOWN_API_PREFIXES.some(p => req.url.startsWith(p))) {
     req.url = `/api${req.url}`;
@@ -58,7 +60,9 @@ const uploadMiddleware = multer({
 });
 
 // In-memory data store for the session
-let currentProfile: CandidateProfile = JSON.parse(JSON.stringify(DEFAULT_GUEST_PROFILE));
+let isDemoSessionActive = false;
+let userBackupProfile: CandidateProfile | null = null;
+let currentProfile: CandidateProfile = JSON.parse(JSON.stringify(CLEAN_EMPTY_PROFILE));
 // Genuine saved jobs: initialized empty in production (no fabricated jobs)
 let savedJobs: SavedJob[] = [];
 let resumeVersions: ResumeVersion[] = [
@@ -183,6 +187,59 @@ app.delete('/api/profile', (req: Request, res: Response) => {
   resumeVersions = [];
   activeRoadmaps = {};
   res.json({ success: true, message: 'All personal data wiped successfully.' });
+});
+
+// --------------------------------------------------------------------------
+// Demo Mode Controller & State Sandboxing
+// --------------------------------------------------------------------------
+app.get('/api/demo/status', (req: Request, res: Response) => {
+  res.json({
+    isDemoMode: isDemoSessionActive,
+    hasBackup: !!userBackupProfile,
+    activeProfileName: currentProfile.personalInfo?.fullName || ''
+  });
+});
+
+app.post('/api/demo/activate', (req: Request, res: Response) => {
+  if (!isDemoSessionActive) {
+    // Preserve current user's profile in backup memory so exiting restores it safely
+    userBackupProfile = JSON.parse(JSON.stringify(currentProfile));
+  }
+  isDemoSessionActive = true;
+  currentProfile = JSON.parse(JSON.stringify(ALEX_MORGAN_DEMO_PROFILE));
+  res.json({
+    success: true,
+    isDemoMode: true,
+    profile: currentProfile,
+    message: 'Demo mode activated with Alex Morgan profile.'
+  });
+});
+
+app.post('/api/demo/reset', (req: Request, res: Response) => {
+  isDemoSessionActive = true;
+  currentProfile = JSON.parse(JSON.stringify(ALEX_MORGAN_DEMO_PROFILE));
+  res.json({
+    success: true,
+    isDemoMode: true,
+    profile: currentProfile,
+    message: 'Demo reset to original Alex Morgan demonstration profile.'
+  });
+});
+
+app.post('/api/demo/exit', (req: Request, res: Response) => {
+  if (userBackupProfile) {
+    currentProfile = JSON.parse(JSON.stringify(userBackupProfile));
+    userBackupProfile = null;
+  } else {
+    currentProfile = JSON.parse(JSON.stringify(CLEAN_EMPTY_PROFILE));
+  }
+  isDemoSessionActive = false;
+  res.json({
+    success: true,
+    isDemoMode: false,
+    profile: currentProfile,
+    message: 'Exited demo mode and restored normal session profile.'
+  });
 });
 
 // --------------------------------------------------------------------------

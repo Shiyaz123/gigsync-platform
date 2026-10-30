@@ -359,5 +359,22 @@ export const api = {
 
   async removeSavedJob(id: string): Promise<{ success: boolean }> {
     return request(`/saved-jobs/${id}`, { method: 'DELETE' });
+  },
+
+  // Demo Mode
+  async activateDemo(): Promise<{ success: boolean; isDemoMode: boolean; profile: CandidateProfile }> {
+    return request('/demo/activate', { method: 'POST' });
+  },
+
+  async resetDemo(): Promise<{ success: boolean; isDemoMode: boolean; profile: CandidateProfile }> {
+    return request('/demo/reset', { method: 'POST' });
+  },
+
+  async exitDemo(): Promise<{ success: boolean; isDemoMode: boolean; profile: CandidateProfile }> {
+    return request('/demo/exit', { method: 'POST' });
+  },
+
+  async getDemoStatus(): Promise<{ isDemoMode: boolean; hasBackup: boolean }> {
+    return request('/demo/status');
   }
 };

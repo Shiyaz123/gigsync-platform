@@ -102,23 +102,25 @@ export const AiResumeAssistantPage: React.FC<AiResumeAssistantPageProps> = ({
   // Active Tag Input buffer for each of the 8 skill categories
   const [newSkillInputs, setNewSkillInputs] = useState<Record<string, string>>({});
 
-  // Initialize history on mount
+  // Initialize and synchronize with incoming profile prop (e.g. Demo Mode activation / reset / exit)
   useEffect(() => {
-    const saved = localStorage.getItem('gigsync_resume_builder_draft');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        setDraftProfile(parsed);
-        setHistory([parsed]);
-        setHistoryIndex(0);
-        return;
-      } catch (e) {
-        // use default
-      }
+    const cloned: CandidateProfile = JSON.parse(JSON.stringify(profile));
+    if (!cloned.categorizedSkills) {
+      cloned.categorizedSkills = getCategorizedSkills(cloned);
     }
-    setHistory([draftProfile]);
+    if (!cloned.achievements) cloned.achievements = [];
+    if (!cloned.mentorshipAndLeadership) cloned.mentorshipAndLeadership = [];
+    if (!cloned.publications) cloned.publications = [];
+    if (!cloned.extracurricularActivities) cloned.extracurricularActivities = [];
+    if (!cloned.languagesKnown) cloned.languagesKnown = [];
+    if (!cloned.interests) cloned.interests = [];
+    if (!cloned.sectionNames) cloned.sectionNames = {};
+    if (!cloned.hiddenSections) cloned.hiddenSections = [];
+
+    setDraftProfile(cloned);
+    setHistory([cloned]);
     setHistoryIndex(0);
-  }, []);
+  }, [profile]);
 
   // Record profile mutation with history snapshot
   const commitProfileChange = (updated: CandidateProfile, opDescription?: string) => {
@@ -580,7 +582,7 @@ export const AiResumeAssistantPage: React.FC<AiResumeAssistantPageProps> = ({
                         <input
                           type="text"
                           className="input-editorial text-xs"
-                          placeholder="e.g. Zainab Rakiah"
+                          placeholder="e.g. Alex Morgan"
                           value={draftProfile.personalInfo.fullName || ''}
                           onChange={e => {
                             const updated = {

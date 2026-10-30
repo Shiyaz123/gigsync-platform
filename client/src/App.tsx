@@ -18,111 +18,28 @@ import { JobDetailPage } from './pages/JobDetailPage';
 import { LearningRoadmapPage } from './pages/LearningRoadmapPage';
 import { HowItWorksPage } from './pages/HowItWorksPage';
 import { SettingsPrivacyPage } from './pages/SettingsPrivacyPage';
-
-const INITIAL_PROFILE: CandidateProfile = {
-  userId: 'usr_guest_demo',
-  personalInfo: {
-    fullName: 'Alex Morgan',
-    email: 'alex.morgan@university.edu',
-    phone: '+1 (555) 234-5678',
-    location: 'San Jose, CA',
-    title: 'Aspiring Software Engineer & Full-Stack Developer',
-    summary: 'Final-year Computer Science student with practical experience building responsive web applications and RESTful APIs using TypeScript, React, and Node.js. Passionate about clean code, test-driven development, and scalable cloud architectures.',
-    linkedin: 'https://linkedin.com/in/alexmorgan-dev',
-    github: 'https://github.com/alexmorgan-dev',
-    portfolio: 'https://alexmorgan.dev'
-  },
-  education: [
-    {
-      id: 'edu_1',
-      institution: 'California State University',
-      degree: 'Bachelor of Science',
-      fieldOfStudy: 'Computer Science',
-      startDate: '2022',
-      endDate: '2026',
-      gpa: '3.75 / 4.0',
-      honors: 'Dean’s Honor List (Fall 2023, Spring 2024)',
-      confirmed: true
-    }
-  ],
-  experience: [
-    {
-      id: 'exp_1',
-      company: 'NextGen Cloud Labs',
-      role: 'Software Engineering Intern',
-      location: 'Remote',
-      startDate: 'Jun 2025',
-      endDate: 'Aug 2025',
-      current: false,
-      bullets: [
-        'Developed interactive dashboard components using React, TypeScript, and CSS modules, cutting dashboard load time by 18%.',
-        'Implemented secure RESTful endpoints in Node.js/Express for user telemetry and activity logging with PostgreSQL.',
-        'Collaborated with senior engineers in an Agile sprint cycle, participating in code reviews and automated CI pipeline checks.'
-      ],
-      confirmed: true
-    }
-  ],
-  projects: [
-    {
-      id: 'proj_1',
-      title: 'DevPulse - Developer Productivity Tracker',
-      role: 'Lead Developer',
-      techStack: ['React', 'TypeScript', 'Node.js', 'PostgreSQL', 'Tailwind CSS'],
-      description: 'Full-stack web application tracking sprint velocity, GitHub commit trends, and task completion metrics.',
-      bullets: [
-        'Engineered responsive single-page application using React 18 and state management hooks.',
-        'Built backend REST API handling authentication, webhook events, and relational queries in PostgreSQL.',
-        'Integrated GitHub REST API to automatically sync and visualize repository contribution metrics.'
-      ],
-      liveUrl: 'https://devpulse-demo.app',
-      repoUrl: 'https://github.com/alexmorgan-dev/devpulse',
-      confirmed: true
-    },
-    {
-      id: 'proj_2',
-      title: 'SmartQuery - Natural Language SQL Assistant',
-      role: 'Full Stack Creator',
-      techStack: ['Python', 'FastAPI', 'SQLite', 'HTML5', 'CSS3'],
-      description: 'Educational tool converting natural language queries into verified SQL statements with visual schema breakdown.',
-      bullets: [
-        'Designed lightweight FastAPI service parsing incoming schema definitions and generating syntax-validated queries.',
-        'Implemented interactive query playground with query execution plan visualization.'
-      ],
-      liveUrl: 'https://smartquery.app',
-      repoUrl: 'https://github.com/alexmorgan-dev/smartquery',
-      confirmed: true
-    }
-  ],
-  skills: {
-    technical: ['JavaScript', 'TypeScript', 'Python', 'SQL', 'HTML5', 'CSS3', 'Git'],
-    frameworks: ['React', 'Node.js', 'Express', 'FastAPI'],
-    tools: ['PostgreSQL', 'SQLite', 'VS Code', 'Postman', 'Linux / Bash'],
-    soft: ['Agile / Scrum', 'Technical Writing', 'Problem Solving', 'Collaborative Code Review']
-  },
-  certifications: [
-    {
-      id: 'cert_1',
-      name: 'Meta Front-End Developer Professional Certificate',
-      issuer: 'Coursera / Meta',
-      issueDate: 'Jan 2025',
-      credentialUrl: 'https://coursera.org/verify/professional-cert/meta-frontend',
-      confirmed: true
-    }
-  ],
-  careerPreferences: {
-    targetRoles: ['Junior Full-Stack Developer', 'Frontend Engineer', 'Junior Software Engineer'],
-    workModes: ['Remote', 'Hybrid'],
-    targetLocations: ['San Francisco, CA', 'Remote US', 'San Jose, CA'],
-    minSalary: '$75,000'
-  },
-  confirmedFactsOnly: true,
-  lastConfirmedAt: new Date().toISOString(),
-  updatedAt: new Date().toISOString()
-};
+import { ALEX_MORGAN_DEMO_PROFILE, CLEAN_EMPTY_PROFILE } from './data/demoProfile';
 
 export const App: React.FC = () => {
   const [currentTab, setCurrentTab] = useState<string>('landing');
-  const [profile, setProfile] = useState<CandidateProfile>(INITIAL_PROFILE);
+  const [isDemoMode, setIsDemoMode] = useState<boolean>(() => {
+    return localStorage.getItem('gigsync_demo_active') === 'true';
+  });
+  const [profile, setProfile] = useState<CandidateProfile>(() => {
+    const isDemo = localStorage.getItem('gigsync_demo_active') === 'true';
+    if (isDemo) {
+      return JSON.parse(JSON.stringify(ALEX_MORGAN_DEMO_PROFILE));
+    }
+    const saved = localStorage.getItem('gigsync_user_profile');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch {
+        // fallback
+      }
+    }
+    return JSON.parse(JSON.stringify(CLEAN_EMPTY_PROFILE));
+  });
   const [jobs, setJobs] = useState<JobListing[]>([]);
   const [savedJobs, setSavedJobs] = useState<SavedJob[]>([]);
   const [roadmap, setRoadmap] = useState<LearningRoadmap | null>(null);
@@ -135,18 +52,28 @@ export const App: React.FC = () => {
 
   const initializeData = async () => {
     try {
-      const authData = await api.getGuestSession().catch(() => null);
-      let activeProfile = INITIAL_PROFILE;
-      if (authData?.profile) {
-        setProfile(authData.profile);
-        activeProfile = authData.profile;
+      const isDemo = localStorage.getItem('gigsync_demo_active') === 'true';
+      let activeProfile = profile;
+
+      if (isDemo) {
+        activeProfile = JSON.parse(JSON.stringify(ALEX_MORGAN_DEMO_PROFILE));
+        setProfile(activeProfile);
+        api.activateDemo().catch(() => {});
+      } else {
+        const authData = await api.getGuestSession().catch(() => null);
+        if (authData?.profile && authData.profile.personalInfo?.fullName) {
+          setProfile(authData.profile);
+          activeProfile = authData.profile;
+        }
       }
 
-      const prefLoc = activeProfile.personalInfo.location || activeProfile.careerPreferences?.targetLocations?.[0] || '';
-      const prefRole = activeProfile.personalInfo.title || activeProfile.careerPreferences?.targetRoles?.[0] || 'Software Engineer';
+      const prefLoc = activeProfile.personalInfo?.location || activeProfile.careerPreferences?.targetLocations?.[0] || '';
+      const prefRole = activeProfile.personalInfo?.title || activeProfile.careerPreferences?.targetRoles?.[0] || 'Software Engineer';
 
-      const jobsData = await api.getJobs({ location: prefLoc, role: prefRole }).catch(() => []);
-      setJobs(jobsData);
+      if (prefLoc || prefRole) {
+        const jobsData = await api.getJobs({ location: prefLoc, role: prefRole }).catch(() => []);
+        setJobs(jobsData);
+      }
 
       const saved = await api.getSavedJobs().catch(() => []);
       setSavedJobs(saved);
@@ -170,10 +97,101 @@ export const App: React.FC = () => {
     setToasts(prev => prev.filter(t => t.id !== id));
   };
 
-  const handleResetDemo = () => {
-    setProfile(JSON.parse(JSON.stringify(INITIAL_PROFILE)));
-    api.updateProfile(INITIAL_PROFILE).catch(() => {});
-    showToast('Demo State Reloaded', 'Clean verified student profile loaded for evaluation.', 'success');
+  // Enter Presentation Demo Mode
+  const handleEnterDemo = async () => {
+    try {
+      // 1. Isolate and safely back up the normal user's profile
+      if (!isDemoMode) {
+        localStorage.setItem('gigsync_user_backup', JSON.stringify(profile));
+      }
+      setIsDemoMode(true);
+      localStorage.setItem('gigsync_demo_active', 'true');
+
+      // 2. Load pristine Alex Morgan profile
+      const demoData = JSON.parse(JSON.stringify(ALEX_MORGAN_DEMO_PROFILE));
+      setProfile(demoData);
+
+      // 3. Inform server to activate demo sandbox
+      await api.activateDemo().catch(() => {});
+
+      // 4. Fetch genuine job opportunities in Alex Morgan's location
+      const demoLoc = demoData.personalInfo.location; // Bengaluru, Karnataka, India
+      const demoRole = demoData.personalInfo.title; // Software Engineer
+      const demoJobs = await api.getJobs({ location: demoLoc, role: demoRole }).catch(() => []);
+      setJobs(demoJobs);
+
+      showToast(
+        '⚡ Demo Mode Activated',
+        'Loaded complete fictional candidate profile for Alex Morgan (Software Engineer, Bengaluru, India).',
+        'success'
+      );
+    } catch (err: any) {
+      showToast('Demo Activation Note', err.message || 'Demo mode enabled locally.', 'info');
+    }
+  };
+
+  // Reset Demo to pristine Alex Morgan state
+  const handleResetDemo = async () => {
+    try {
+      const demoData = JSON.parse(JSON.stringify(ALEX_MORGAN_DEMO_PROFILE));
+      setProfile(demoData);
+      await api.resetDemo().catch(() => {});
+
+      const demoLoc = demoData.personalInfo.location;
+      const demoRole = demoData.personalInfo.title;
+      const demoJobs = await api.getJobs({ location: demoLoc, role: demoRole }).catch(() => []);
+      setJobs(demoJobs);
+
+      showToast(
+        'Demo Profile Reset',
+        'Alex Morgan profile reset to initial 13-section demonstration state.',
+        'info'
+      );
+    } catch (err: any) {
+      showToast('Reset Note', err.message || 'Reset complete.', 'info');
+    }
+  };
+
+  // Exit Demo Mode and cleanly restore user state
+  const handleExitDemo = async () => {
+    try {
+      setIsDemoMode(false);
+      localStorage.removeItem('gigsync_demo_active');
+      localStorage.removeItem('gigsync_resume_builder_draft');
+
+      // Restore user backup if available
+      const backupStr = localStorage.getItem('gigsync_user_backup');
+      let restoredProfile = JSON.parse(JSON.stringify(CLEAN_EMPTY_PROFILE));
+      if (backupStr) {
+        try {
+          restoredProfile = JSON.parse(backupStr);
+          localStorage.removeItem('gigsync_user_backup');
+        } catch {
+          // ignore
+        }
+      }
+
+      setProfile(restoredProfile);
+      await api.exitDemo().catch(() => {});
+
+      // Refresh jobs for user's profile
+      const userLoc = restoredProfile.personalInfo?.location || '';
+      const userRole = restoredProfile.personalInfo?.title || '';
+      if (userLoc || userRole) {
+        const userJobs = await api.getJobs({ location: userLoc, role: userRole }).catch(() => []);
+        setJobs(userJobs);
+      } else {
+        setJobs([]);
+      }
+
+      showToast(
+        'Exited Demo Mode',
+        'Restored your prior workspace data without altering your saved records.',
+        'info'
+      );
+    } catch (err: any) {
+      showToast('Exit Note', err.message || 'Exited demo mode.', 'info');
+    }
   };
 
   const handleToggleSaveJob = async (jobId: string) => {
@@ -208,8 +226,63 @@ export const App: React.FC = () => {
         currentTab={currentTab}
         setCurrentTab={setCurrentTab}
         isGuest={true}
+        isDemoMode={isDemoMode}
+        onEnterDemo={handleEnterDemo}
+        onExitDemo={handleExitDemo}
         onResetDemo={handleResetDemo}
       />
+
+      {/* Demo Mode Top Context Banner */}
+      {isDemoMode && (
+        <div className="bg-[#FFF9E6] border-b border-[#D4A373] text-[#6B4B1B] px-6 py-2.5 text-xs font-mono shadow-sm no-print">
+          <div className="max-w-[1340px] mx-auto flex flex-col md:flex-row items-start md:items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-[#D9534F] text-white font-bold text-[10px] rounded-[2px] tracking-wider uppercase">
+                ⚡ DEMO ACTIVE
+              </span>
+              <span>
+                Fictional Candidate: <strong>Alex Morgan</strong> • Software Engineer • Bengaluru, Karnataka, India
+              </span>
+            </div>
+            <div className="flex items-center gap-2.5 text-[11px]">
+              <button
+                onClick={() => handleNavigate('ai-assistant')}
+                className="hover:underline text-[#20251F] font-semibold"
+              >
+                AI Assistant Form
+              </button>
+              <span className="text-[#D5D5CC]">•</span>
+              <button
+                onClick={() => handleNavigate('resume')}
+                className="hover:underline text-[#20251F] font-semibold"
+              >
+                Resume Studio (4 Templates)
+              </button>
+              <span className="text-[#D5D5CC]">•</span>
+              <button
+                onClick={() => handleNavigate('jobs')}
+                className="hover:underline text-[#20251F] font-semibold"
+              >
+                Find Genuine Jobs
+              </button>
+              <span className="text-[#D5D5CC]">•</span>
+              <button
+                onClick={handleResetDemo}
+                className="hover:underline text-[#20251F] font-semibold"
+              >
+                Reset Demo
+              </button>
+              <span className="text-[#D5D5CC]">•</span>
+              <button
+                onClick={handleExitDemo}
+                className="hover:underline text-[#D9534F] font-bold"
+              >
+                Exit Demo
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Main Container */}
       <main className="flex-1 max-w-[1340px] w-full mx-auto px-6 py-8">
@@ -338,7 +411,7 @@ export const App: React.FC = () => {
         {currentTab === 'settings' && (
           <SettingsPrivacyPage
             onDataReset={() => {
-              setProfile(INITIAL_PROFILE);
+              setProfile(JSON.parse(JSON.stringify(CLEAN_EMPTY_PROFILE)));
               setSavedJobs([]);
               initializeData();
             }}
