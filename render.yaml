@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: gigsync-platform
+    runtime: node
+    plan: free
+    region: oregon
+    buildCommand: npm run build
+    startCommand: npm run start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: FLASK_SERVICE_URL
+        value: http://127.0.0.1:5001

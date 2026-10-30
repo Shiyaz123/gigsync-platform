@@ -42,9 +42,10 @@ app.use(cors({
 app.options('*', cors());
 app.use(express.json({ limit: '10mb' }));
 
-// URL normalizer: ensure req.url starts with /api for Vercel serverless / proxy rewrites
+// URL normalizer: ensure req.url starts with /api for Vercel serverless / proxy rewrites of API endpoints
+const KNOWN_API_PREFIXES = ['/health', '/auth', '/jobs', '/saved-jobs', '/roadmap', '/profile', '/parser', '/resume', '/match', '/ai'];
 app.use((req, res, next) => {
-  if (!req.url.startsWith('/api')) {
+  if (!req.url.startsWith('/api') && KNOWN_API_PREFIXES.some(p => req.url.startsWith(p))) {
     req.url = `/api${req.url}`;
   }
   next();
@@ -872,6 +873,15 @@ app.delete('/api/saved-jobs/:id', (req: Request, res: Response) => {
 app.all('/api/*', (req: Request, res: Response) => {
   res.status(404).json({ error: `Route '${req.method} ${req.path}' not found on API server.` });
 });
+
+// Serve frontend static build in standalone production / Render deployment
+const clientDistPath = path.resolve(__dirname, '../../client/dist');
+if (fs.existsSync(clientDistPath)) {
+  app.use(express.static(clientDistPath));
+  app.get('*', (req: Request, res: Response) => {
+    res.sendFile(path.join(clientDistPath, 'index.html'));
+  });
+}
 
 // Start Server when run directly
 if (process.env.NODE_ENV !== 'test' && !process.env.VERCEL) {

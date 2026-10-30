@@ -6,7 +6,8 @@
     "install:all": "cd client && npm install && cd ../server && npm install",
     "build:server": "cd server && npm run build",
     "build:client": "cd client && npm run build",
-    "build": "cd client && npm install && npm run build",
+    "build": "npm run install:all && npm run build:client && npm run build:server",
+    "start": "node server/dist/server.js",
     "start:server": "node server/dist/server.js",
     "test:server": "cd server && npm run build && npm test"
   },
