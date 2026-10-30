@@ -1820,7 +1820,7 @@ export const AiResumeAssistantPage: React.FC<AiResumeAssistantPageProps> = ({
             /* Review & Live Preview Screen (Templates 1 to 4) */
             <div className="space-y-6">
               {/* Template Switcher Bar */}
-              <div className="surface-card p-4 flex items-center justify-between flex-wrap gap-3">
+              <div className="surface-card p-4 flex items-center justify-between flex-wrap gap-3 no-print">
                 <div className="flex items-center gap-2">
                   <span className="font-mono text-xs font-bold text-[#686C63] uppercase">Template:</span>
                   <div className="flex items-center gap-1.5">
@@ -1858,7 +1858,7 @@ export const AiResumeAssistantPage: React.FC<AiResumeAssistantPageProps> = ({
               </div>
 
               {/* Render Selected Template */}
-              <div className="p-4 sm:p-8 bg-[#E8E7DF] border border-[#D5D5CC] rounded-[3px] flex justify-center">
+              <div className="p-4 sm:p-8 bg-[#E8E7DF] border border-[#D5D5CC] rounded-[3px] flex justify-center print:p-0 print:m-0 print:bg-transparent print:border-none">
                 <ResumeTemplateRenderer
                   templateId={selectedTemplate}
                   profile={getNormalizedProfile()}

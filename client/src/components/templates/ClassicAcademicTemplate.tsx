@@ -5,7 +5,10 @@ import {
   cleanList,
   isNAOrEmpty,
   getCategorizedSkills,
-  DEFAULT_SECTION_NAMES
+  DEFAULT_SECTION_NAMES,
+  formatEducationDegree,
+  cleanProjectEntry,
+  formatSafeUrl
 } from './templateUtils';
 
 interface TemplateProps {
@@ -46,7 +49,34 @@ export const ClassicAcademicTemplate: React.FC<TemplateProps> = ({
   const getTitle = (key: string, fallback: string) => customNames[key] || DEFAULT_SECTION_NAMES[key] || fallback;
   const isHidden = (key: string) => hiddenSections.includes(key);
 
-  const contactItems = [location, phone, email, linkedin, github].filter(Boolean);
+  const contactElements: React.ReactNode[] = [];
+  if (location) contactElements.push(<span key="loc">{location}</span>);
+  if (phone) contactElements.push(<a key="phone" href={`tel:${phone}`} className="hover:underline">{phone}</a>);
+  if (email) contactElements.push(<a key="email" href={`mailto:${email}`} className="hover:underline">{email}</a>);
+  if (linkedin) {
+    const safeLi = formatSafeUrl(linkedin);
+    contactElements.push(
+      safeLi ? (
+        <a key="li" href={safeLi} target="_blank" rel="noreferrer" className="hover:underline">
+          {linkedin.replace(/^https?:\/\/(www\.)?linkedin\.com\/in\/?/i, 'LinkedIn: ')}
+        </a>
+      ) : (
+        <span key="li">{linkedin}</span>
+      )
+    );
+  }
+  if (github) {
+    const safeGh = formatSafeUrl(github);
+    contactElements.push(
+      safeGh ? (
+        <a key="gh" href={safeGh} target="_blank" rel="noreferrer" className="hover:underline">
+          {github.replace(/^https?:\/\/(www\.)?github\.com\/?/i, 'GitHub: ')}
+        </a>
+      ) : (
+        <span key="gh">{github}</span>
+      )
+    );
+  }
 
   const spacingClasses = {
     compact: 'space-y-3 text-xs leading-normal',
@@ -65,12 +95,12 @@ export const ClassicAcademicTemplate: React.FC<TemplateProps> = ({
           {fullName || 'Candidate Name'}
         </h1>
         {title && <p className="text-sm italic text-neutral-800 mt-1">{title}</p>}
-        {contactItems.length > 0 && (
+        {contactElements.length > 0 && (
           <p className="text-xs text-neutral-700 mt-2 tracking-wide">
-            {contactItems.map((item, idx) => (
+            {contactElements.map((item, idx) => (
               <React.Fragment key={idx}>
-                <span>{item}</span>
-                {idx < contactItems.length - 1 && <span className="mx-2">•</span>}
+                {item}
+                {idx < contactElements.length - 1 && <span className="mx-2">•</span>}
               </React.Fragment>
             ))}
           </p>
@@ -95,21 +125,18 @@ export const ClassicAcademicTemplate: React.FC<TemplateProps> = ({
           </h2>
           {eduList.map((edu, idx) => {
             const inst = cleanText(edu.institution);
-            const degree = cleanText(edu.degree);
-            const branch = cleanText(edu.branch || edu.fieldOfStudy);
+            const eduDegreeText = formatEducationDegree(edu.degree, edu.branch || edu.fieldOfStudy);
             const year = cleanText(edu.graduationYear || edu.endDate);
             const gpa = cleanText(edu.cgpa || edu.gpa);
 
             return (
-              <div key={edu.id || idx} className="space-y-0.5">
+              <div key={edu.id || idx} className="space-y-0.5 page-break-avoid break-inside-avoid">
                 <div className="flex justify-between items-baseline font-bold">
                   <span>{inst}</span>
                   {year && <span className="font-normal text-xs">{year}</span>}
                 </div>
                 <div className="flex justify-between items-baseline italic text-neutral-800 text-xs">
-                  <span>
-                    {degree} {branch ? `in ${branch}` : ''}
-                  </span>
+                  <span>{eduDegreeText}</span>
                   {gpa && <span className="not-italic font-medium">Cumulative Grade: {gpa}</span>}
                 </div>
               </div>
@@ -125,19 +152,22 @@ export const ClassicAcademicTemplate: React.FC<TemplateProps> = ({
             {getTitle('publications', 'Publications & Scholarly Works')}
           </h2>
           <ol className="list-decimal list-outside pl-5 space-y-1">
-            {pubList.map((pub, idx) => (
-              <li key={pub.id || idx}>
-                <span className="font-semibold">{pub.title}</span>.
-                {pub.publisher && <span className="italic ml-1">{pub.publisher}</span>}
-                {pub.date && <span className="ml-1">({pub.date})</span>}
-                {pub.url && (
-                  <span className="ml-1 text-neutral-600 text-xs underline">
-                    {pub.url}
-                  </span>
-                )}
-                {pub.description && <p className="text-neutral-700 text-xs mt-0.5">{pub.description}</p>}
-              </li>
-            ))}
+            {pubList.map((pub, idx) => {
+              const safeUrl = formatSafeUrl(pub.url);
+              return (
+                <li key={pub.id || idx} className="page-break-avoid break-inside-avoid">
+                  <span className="font-semibold">{pub.title}</span>.
+                  {pub.publisher && <span className="italic ml-1">{pub.publisher}</span>}
+                  {pub.date && <span className="ml-1">({pub.date})</span>}
+                  {safeUrl && (
+                    <a href={safeUrl} target="_blank" rel="noreferrer" className="ml-1 text-neutral-700 text-xs underline">
+                      [Link]
+                    </a>
+                  )}
+                  {pub.description && <p className="text-neutral-700 text-xs mt-0.5">{pub.description}</p>}
+                </li>
+              );
+            })}
           </ol>
         </section>
       )}
@@ -208,18 +238,33 @@ export const ClassicAcademicTemplate: React.FC<TemplateProps> = ({
             {getTitle('projects', 'Research & Engineering Projects')}
           </h2>
           {projList.map((proj, idx) => {
-            const title = cleanText(proj.title);
-            const desc = cleanText(proj.description);
-            const tech = cleanList([...(proj.technologies || []), ...(proj.techStack || [])]);
-            const bullets = cleanList([...(proj.keyFeatures || []), ...(proj.bullets || [])]);
+            const { title, subtitle, bullets, techStack, githubUrl, liveUrl } = cleanProjectEntry(proj);
+            if (!title) return null;
 
             return (
-              <div key={proj.id || idx} className="space-y-1">
-                <div className="flex justify-between items-baseline font-bold text-xs">
-                  <span>{title}</span>
-                  {tech.length > 0 && <span className="font-normal italic text-neutral-700">({tech.join(', ')})</span>}
+              <div key={proj.id || idx} className="space-y-1 page-break-avoid break-inside-avoid">
+                <div className="flex justify-between items-baseline font-bold text-xs flex-wrap gap-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span>{title}</span>
+                    {techStack.length > 0 && <span className="font-normal italic text-neutral-700">({techStack.join(', ')})</span>}
+                  </div>
+                  {(githubUrl || liveUrl) && (
+                    <div className="flex items-center gap-2 font-normal text-[11px]">
+                      {githubUrl && (
+                        <a href={githubUrl} target="_blank" rel="noreferrer" className="text-neutral-800 underline hover:text-black">
+                          Repository
+                        </a>
+                      )}
+                      {githubUrl && liveUrl && <span>•</span>}
+                      {liveUrl && (
+                        <a href={liveUrl} target="_blank" rel="noreferrer" className="text-neutral-800 underline hover:text-black">
+                          Demonstration
+                        </a>
+                      )}
+                    </div>
+                  )}
                 </div>
-                {desc && <p className="text-neutral-800 text-xs italic">{desc}</p>}
+                {subtitle && <p className="text-neutral-800 text-xs italic">{subtitle}</p>}
                 {bullets.length > 0 && (
                   <ul className="list-disc list-outside pl-5 space-y-0.5 text-xs text-neutral-900">
                     {bullets.map((b, bIdx) => (
@@ -247,7 +292,7 @@ export const ClassicAcademicTemplate: React.FC<TemplateProps> = ({
             const bullets = cleanList([...(exp.responsibilities || []), ...(exp.bullets || [])]);
 
             return (
-              <div key={exp.id || idx} className="space-y-0.5">
+              <div key={exp.id || idx} className="space-y-0.5 page-break-avoid break-inside-avoid">
                 <div className="flex justify-between items-baseline font-bold text-xs">
                   <span>{expRole} — {expCompany}</span>
                   <span className="font-normal">{expDur}</span>

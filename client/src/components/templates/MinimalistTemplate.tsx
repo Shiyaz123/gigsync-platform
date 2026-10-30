@@ -5,7 +5,10 @@ import {
   cleanList,
   isNAOrEmpty,
   getCategorizedSkills,
-  DEFAULT_SECTION_NAMES
+  DEFAULT_SECTION_NAMES,
+  formatEducationDegree,
+  cleanProjectEntry,
+  formatSafeUrl
 } from './templateUtils';
 
 interface TemplateProps {
@@ -46,13 +49,31 @@ export const MinimalistTemplate: React.FC<TemplateProps> = ({
   const getTitle = (key: string, fallback: string) => customNames[key] || DEFAULT_SECTION_NAMES[key] || fallback;
   const isHidden = (key: string) => hiddenSections.includes(key);
 
-  const contactItems = [
-    location,
-    phone,
-    email,
-    linkedin ? linkedin.replace(/^https?:\/\/(www\.)?/i, '') : '',
-    github ? github.replace(/^https?:\/\/(www\.)?/i, '') : ''
-  ].filter(Boolean);
+  const safeLinkedin = formatSafeUrl(linkedin);
+  const safeGithub = formatSafeUrl(github);
+
+  const contactNodes: React.ReactNode[] = [];
+  if (location) contactNodes.push(<span key="loc">{location}</span>);
+  if (phone) contactNodes.push(<a key="ph" href={`tel:${phone}`} className="hover:underline">{phone}</a>);
+  if (email) contactNodes.push(<a key="em" href={`mailto:${email}`} className="hover:underline">{email}</a>);
+  if (linkedin) {
+    contactNodes.push(
+      safeLinkedin ? (
+        <a key="li" href={safeLinkedin} target="_blank" rel="noreferrer" className="hover:underline">
+          {linkedin.replace(/^https?:\/\/(www\.)?linkedin\.com\/in\/?/i, 'linkedin/')}
+        </a>
+      ) : <span key="li">{linkedin}</span>
+    );
+  }
+  if (github) {
+    contactNodes.push(
+      safeGithub ? (
+        <a key="gh" href={safeGithub} target="_blank" rel="noreferrer" className="hover:underline">
+          {github.replace(/^https?:\/\/(www\.)?github\.com\/?/i, 'github/')}
+        </a>
+      ) : <span key="gh">{github}</span>
+    );
+  }
 
   const spacingClasses = {
     compact: 'space-y-2.5 text-xs',
@@ -70,11 +91,11 @@ export const MinimalistTemplate: React.FC<TemplateProps> = ({
           </h1>
           {title && <span className="text-xs font-mono uppercase text-neutral-600">{title}</span>}
         </div>
-        {contactItems.length > 0 && (
+        {contactNodes.length > 0 && (
           <div className="text-[11px] font-mono text-neutral-700 mt-1 flex flex-wrap gap-x-2 gap-y-0.5">
-            {contactItems.map((c, i) => (
+            {contactNodes.map((c, i) => (
               <span key={i}>
-                {c}{i < contactItems.length - 1 ? ' |' : ''}
+                {c}{i < contactNodes.length - 1 ? ' |' : ''}
               </span>
             ))}
           </div>
@@ -140,7 +161,7 @@ export const MinimalistTemplate: React.FC<TemplateProps> = ({
             const bullets = cleanList([...(exp.responsibilities || []), ...(exp.bullets || [])]);
 
             return (
-              <div key={exp.id || idx} className="space-y-0.5">
+              <div key={exp.id || idx} className="space-y-0.5 page-break-avoid break-inside-avoid">
                 <div className="flex justify-between items-baseline font-bold text-xs">
                   <span>{expRole} — {expCompany}</span>
                   <span className="font-mono text-[11px] font-normal">{expDur} {expLoc ? `(${expLoc})` : ''}</span>
@@ -165,23 +186,28 @@ export const MinimalistTemplate: React.FC<TemplateProps> = ({
             // {getTitle('projects', 'Projects')}
           </h2>
           {projList.map((proj, idx) => {
-            const title = cleanText(proj.title);
-            const desc = cleanText(proj.description);
-            const tech = cleanList([...(proj.technologies || []), ...(proj.techStack || [])]);
-            const bullets = cleanList([...(proj.keyFeatures || []), ...(proj.bullets || [])]);
-            const gh = cleanText(proj.githubUrl || proj.repoUrl);
-            const live = cleanText(proj.liveUrl);
+            const { title, subtitle, bullets, techStack, githubUrl, liveUrl } = cleanProjectEntry(proj);
+            if (!title) return null;
 
             return (
-              <div key={proj.id || idx} className="space-y-0.5">
-                <div className="flex justify-between items-baseline text-xs">
+              <div key={proj.id || idx} className="space-y-0.5 page-break-avoid break-inside-avoid">
+                <div className="flex justify-between items-baseline text-xs flex-wrap gap-1">
                   <span className="font-bold">{title}</span>
-                  <span className="font-mono text-[11px] text-neutral-600">
-                    {tech.length > 0 && `[${tech.join(', ')}] `}
-                    {gh && gh}
+                  <span className="font-mono text-[11px] text-neutral-600 flex items-center gap-2">
+                    {techStack.length > 0 && `[${techStack.join(', ')}]`}
+                    {githubUrl && (
+                      <a href={githubUrl} target="_blank" rel="noreferrer" className="underline hover:text-black">
+                        code
+                      </a>
+                    )}
+                    {liveUrl && (
+                      <a href={liveUrl} target="_blank" rel="noreferrer" className="underline hover:text-black">
+                        live
+                      </a>
+                    )}
                   </span>
                 </div>
-                {desc && <p className="text-neutral-700 italic text-xs">{desc}</p>}
+                {subtitle && <p className="text-neutral-700 italic text-xs">{subtitle}</p>}
                 {bullets.length > 0 && (
                   <ul className="list-disc list-outside pl-4 space-y-0.5 text-xs text-neutral-800">
                     {bullets.map((b, bIdx) => (
@@ -203,15 +229,15 @@ export const MinimalistTemplate: React.FC<TemplateProps> = ({
           </h2>
           {eduList.map((edu, idx) => {
             const inst = cleanText(edu.institution);
-            const degree = cleanText(edu.degree);
-            const branch = cleanText(edu.branch || edu.fieldOfStudy);
+            const eduDegreeText = formatEducationDegree(edu.degree, edu.branch || edu.fieldOfStudy);
             const year = cleanText(edu.graduationYear || edu.endDate);
             const gpa = cleanText(edu.cgpa || edu.gpa);
 
             return (
-              <div key={edu.id || idx} className="flex justify-between items-baseline text-xs">
+              <div key={edu.id || idx} className="flex justify-between items-baseline text-xs page-break-avoid break-inside-avoid">
                 <div>
-                  <span className="font-bold">{inst}</span> — {degree} {branch ? `in ${branch}` : ''}
+                  <span className="font-bold">{inst}</span>
+                  {eduDegreeText && <span> — {eduDegreeText}</span>}
                   {gpa && <span className="font-mono ml-2">[GPA: {gpa}]</span>}
                 </div>
                 {year && <span className="font-mono text-[11px]">{year}</span>}

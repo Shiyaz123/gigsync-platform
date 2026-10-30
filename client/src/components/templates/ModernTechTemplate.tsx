@@ -5,7 +5,10 @@ import {
   cleanList,
   isNAOrEmpty,
   getCategorizedSkills,
-  DEFAULT_SECTION_NAMES
+  DEFAULT_SECTION_NAMES,
+  formatEducationDegree,
+  cleanProjectEntry,
+  formatSafeUrl
 } from './templateUtils';
 import { Code2, Link2, Mail, Phone, MapPin, Globe, ExternalLink } from 'lucide-react';
 
@@ -217,7 +220,7 @@ export const ModernTechTemplate: React.FC<TemplateProps> = ({
             const bullets = cleanList([...(exp.responsibilities || []), ...(exp.bullets || [])]);
 
             return (
-              <div key={exp.id || idx} className="space-y-1">
+              <div key={exp.id || idx} className="space-y-1 page-break-avoid break-inside-avoid">
                 <div className="flex flex-col sm:flex-row sm:items-baseline sm:justify-between text-xs">
                   <div>
                     <span className="font-bold text-slate-950 text-sm">{expRole || 'Software Engineer'}</span>
@@ -252,38 +255,36 @@ export const ModernTechTemplate: React.FC<TemplateProps> = ({
             <span className="flex-1 h-px bg-slate-200" />
           </h2>
           {projList.map((proj, idx) => {
-            const title = cleanText(proj.title);
-            const desc = cleanText(proj.description);
-            const tech = cleanList([...(proj.technologies || []), ...(proj.techStack || [])]);
-            const bullets = cleanList([...(proj.keyFeatures || []), ...(proj.bullets || [])]);
-            const gh = cleanText(proj.githubUrl || proj.repoUrl);
-            const live = cleanText(proj.liveUrl);
+            const { title, subtitle, bullets, techStack, githubUrl, liveUrl } = cleanProjectEntry(proj);
+            if (!title) return null;
 
             return (
-              <div key={proj.id || idx} className="space-y-1">
+              <div key={proj.id || idx} className="space-y-1 page-break-avoid break-inside-avoid">
                 <div className="flex flex-col sm:flex-row sm:items-baseline sm:justify-between text-xs">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-bold text-slate-950 text-sm">{title}</span>
-                    {tech.length > 0 && (
+                    {techStack.length > 0 && (
                       <span className="text-slate-500 font-mono text-[11px]">
-                        [{tech.join(' • ')}]
+                        [{techStack.join(' • ')}]
                       </span>
                     )}
                   </div>
-                  <div className="flex items-center gap-3 font-mono text-[11px]">
-                    {gh && (
-                      <a href={gh.startsWith('http') ? gh : `https://${gh}`} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline flex items-center gap-0.5">
-                        <Code2 size={11} /> Code
-                      </a>
-                    )}
-                    {live && (
-                      <a href={live.startsWith('http') ? live : `https://${live}`} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline flex items-center gap-0.5">
-                        <ExternalLink size={11} /> Live Demo
-                      </a>
-                    )}
-                  </div>
+                  {(githubUrl || liveUrl) && (
+                    <div className="flex items-center gap-3 font-mono text-[11px]">
+                      {githubUrl && (
+                        <a href={githubUrl} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline flex items-center gap-0.5">
+                          <Code2 size={11} /> Code
+                        </a>
+                      )}
+                      {liveUrl && (
+                        <a href={liveUrl} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline flex items-center gap-0.5">
+                          <ExternalLink size={11} /> Live Demo
+                        </a>
+                      )}
+                    </div>
+                  )}
                 </div>
-                {desc && <p className="text-slate-600 italic text-xs">{desc}</p>}
+                {subtitle && <p className="text-slate-600 italic text-xs">{subtitle}</p>}
                 {bullets.length > 0 && (
                   <ul className="list-disc list-outside pl-4 space-y-0.5 text-slate-700 leading-relaxed">
                     {bullets.map((b, bIdx) => (
@@ -306,18 +307,17 @@ export const ModernTechTemplate: React.FC<TemplateProps> = ({
           </h2>
           {eduList.map((edu, idx) => {
             const inst = cleanText(edu.institution);
-            const degree = cleanText(edu.degree);
-            const branch = cleanText(edu.branch || edu.fieldOfStudy);
+            const eduDegreeText = formatEducationDegree(edu.degree, edu.branch || edu.fieldOfStudy);
             const year = cleanText(edu.graduationYear || edu.endDate);
             const gpa = cleanText(edu.cgpa || edu.gpa);
 
             return (
-              <div key={edu.id || idx} className="flex flex-col sm:flex-row sm:items-baseline sm:justify-between text-xs">
+              <div key={edu.id || idx} className="flex flex-col sm:flex-row sm:items-baseline sm:justify-between text-xs page-break-avoid break-inside-avoid">
                 <div>
                   <span className="font-bold text-slate-950">{inst}</span>
-                  {(degree || branch) && (
+                  {eduDegreeText && (
                     <span className="text-slate-700 ml-1">
-                      — {degree} {branch ? `in ${branch}` : ''}
+                      — {eduDegreeText}
                     </span>
                   )}
                   {gpa && <span className="text-slate-600 font-medium ml-2 font-mono">GPA: {gpa}</span>}

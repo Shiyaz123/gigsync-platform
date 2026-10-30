@@ -203,14 +203,94 @@ h1, h2, h3, .heading-serif {
   border-color: var(--text-main);
 }
 
-/* Printable PDF View */
+/* Printable PDF View & Strict Resume Pagination */
+@page {
+  size: letter;
+  margin: 12mm 14mm 12mm 14mm;
+}
+
 @media print {
-  body {
+  html, body {
+    background: #ffffff !important;
     background-color: #ffffff !important;
     color: #000000 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
-  .no-print {
+
+  /* Strip all platform navigation, action buttons, toolbars, and chatbot drawers */
+  .no-print,
+  nav,
+  header.app-header,
+  aside,
+  button,
+  .btn-editorial,
+  footer {
     display: none !important;
+  }
+
+  /* Reset outer gray preview frame and parent borders that caused printed double-boxes */
+  .ai-resume-builder-page,
+  .resume-studio-page,
+  .surface-card,
+  .resume-template-container,
+  main,
+  div {
+    background: transparent !important;
+    background-color: transparent !important;
+    border-color: transparent !important;
+    box-shadow: none !important;
+  }
+
+  /* Resume sheet container resets: cleanly fit page without outer shadows or borders */
+  .modern-tech-template,
+  .classic-academic-template,
+  .executive-template,
+  .minimalist-template {
+    border: none !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    max-width: 100% !important;
+    width: 100% !important;
+    background-color: #ffffff !important;
+  }
+
+  /* Section heading rules: never leave an orphan heading stranded at the bottom of a page */
+  h1, h2, h3, h4, h5, h6,
+  .section-title,
+  header {
+    break-after: avoid !important;
+    page-break-after: avoid !important;
+  }
+
+  /* Keep each individual project, experience item, and education block atomic */
+  .page-break-avoid,
+  .break-inside-avoid,
+  .resume-item,
+  li {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  /* Typography orphan and widow protection */
+  p, li {
+    orphans: 3;
+    widows: 3;
+  }
+
+  /* Clean hyperlinks in print */
+  a {
+    color: inherit !important;
+    text-decoration: none !important;
+  }
+
+  .modern-tech-template a {
+    color: #1d4ed8 !important;
   }
 }
 

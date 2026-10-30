@@ -242,7 +242,7 @@ export const ResumeStudioPage: React.FC<ResumeStudioPageProps> = ({
 
       {/* Mode 1: Printable Document Sheet Preview */}
       {viewMode === 'preview' && (
-        <div className="p-4 sm:p-10 bg-[#E8E7DF] border border-[#D5D5CC] rounded-[3px] flex justify-center">
+        <div className="p-4 sm:p-10 bg-[#E8E7DF] border border-[#D5D5CC] rounded-[3px] flex justify-center print:p-0 print:m-0 print:bg-transparent print:border-none">
           <ResumeTemplateRenderer
             templateId={selectedTemplate}
             profile={profile}

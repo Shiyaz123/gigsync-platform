@@ -48,6 +48,37 @@ export function escapeLatex(text: string | undefined | null): string {
     .replace(/[<>]/g, '');
 }
 
+export function formatEduLatex(degree?: string, branch?: string): string {
+  let d = cleanText(degree).replace(/[\s,–—-]+$/g, '').replace(/\s+(?:in|of)\s*$/i, '').trim();
+  let b = cleanText(branch).replace(/^[\s,–—-]+/g, '').replace(/^(?:in|of)\s+/i, '').trim();
+  if (!d && !b) return '';
+  if (d && !b) return escapeLatex(d);
+  if (!d && b) return escapeLatex(b);
+  if (d.toLowerCase().includes(b.toLowerCase())) return escapeLatex(d);
+  return `${escapeLatex(d)} in ${escapeLatex(b)}`;
+}
+
+export function cleanProjectLatex(proj: any) {
+  let title = cleanText(proj.title).replace(/\s*(?:[-–—|/]\s*)?(?:link|github|code|live\s*demo|view)\s*$/i, '').trim();
+  let desc = cleanText(proj.description).replace(/\s*(?:[-–—|/]\s*)?(?:link|github|code|live\s*demo|view)\s*$/i, '').trim();
+  let subtitle = desc;
+  const split = title.match(/^([A-Za-z0-9\s&()'/]+?)\s*[-–—:]\s*(.+)$/);
+  if (split && !subtitle) {
+    title = split[1].trim();
+    subtitle = split[2].trim();
+  }
+  const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+  if (norm(title) === norm(subtitle)) {
+    subtitle = '';
+  }
+  return {
+    title,
+    subtitle,
+    techStack: cleanList([...(proj.technologies || []), ...(proj.techStack || [])]),
+    bullets: cleanList([...(proj.keyFeatures || []), ...(proj.bullets || [])]).filter(b => norm(b) !== norm(subtitle))
+  };
+}
+
 /**
  * Generates compilable LaTeX code based on selected template and profile.
  */
@@ -121,11 +152,10 @@ function generateModernLatex(profile: CandidateProfile): string {
     .filter(e => !isNAOrEmpty(e.institution))
     .map(e => {
       const year = cleanText(e.graduationYear || e.endDate);
-      const degree = cleanText(e.degree);
-      const branch = cleanText(e.branch || e.fieldOfStudy);
+      const degreeText = formatEduLatex(e.degree, e.branch || e.fieldOfStudy);
       const gpa = cleanText(e.cgpa || e.gpa);
       return `\\noindent\\textbf{${escapeLatex(e.institution)}} \\hfill ${escapeLatex(year)}\\\\
-\\textit{${escapeLatex(degree)}${branch ? ` in ${escapeLatex(branch)}` : ''}}${gpa ? ` \\hfill \\textbf{GPA:} ${escapeLatex(gpa)}` : ''}\\\\
+\\textit{${degreeText}}${gpa ? ` \\hfill \\textbf{GPA:} ${escapeLatex(gpa)}` : ''}\\\\
 \\vspace{3pt}`;
     }).join('\n');
 
@@ -146,16 +176,16 @@ ${bullets.map(b => `  \\item ${escapeLatex(b)}`).join('\n')}
   const projItems = (profile.projects || [])
     .filter(pr => !isNAOrEmpty(pr.title))
     .map(pr => {
-      const tech = cleanList([...(pr.technologies || []), ...(pr.techStack || [])]);
-      const bullets = cleanList([...(pr.keyFeatures || []), ...(pr.bullets || [])]);
-      return `\\noindent\\textbf{${escapeLatex(pr.title)}}${tech.length > 0 ? ` $|$ \\textit{${tech.map(escapeLatex).join(', ')}}` : ''}\\\\
-${cleanText(pr.description) ? `${escapeLatex(pr.description)}\\\\` : ''}
+      const { title, subtitle, bullets, techStack } = cleanProjectLatex(pr);
+      if (!title) return '';
+      return `\\noindent\\textbf{${escapeLatex(title)}}${techStack.length > 0 ? ` $|$ \\textit{${techStack.map(escapeLatex).join(', ')}}` : ''}\\\\
+${subtitle ? `\\textit{${escapeLatex(subtitle)}}\\\\` : ''}
 \\vspace{-4pt}
 \\begin{itemize}[leftmargin=15pt, itemsep=1pt, parsep=0pt]
 ${bullets.map(b => `  \\item ${escapeLatex(b)}`).join('\n')}
 \\end{itemize}
 \\vspace{3pt}`;
-    }).join('\n');
+    }).filter(Boolean).join('\n');
 
   const achList = cleanList(profile.achievements);
   const leadList = cleanList(profile.mentorshipAndLeadership);
@@ -262,7 +292,7 @@ function generateAcademicLatex(profile: CandidateProfile): string {
   const eduItems = (profile.education || [])
     .filter(e => !isNAOrEmpty(e.institution))
     .map(e => `\\noindent\\textbf{${escapeLatex(e.institution)}} \\hfill ${escapeLatex(e.graduationYear || e.endDate)}\\\\
-\\textit{${escapeLatex(e.degree)}${cleanText(e.branch || e.fieldOfStudy) ? ` in ${escapeLatex(e.branch || e.fieldOfStudy)}` : ''}}${cleanText(e.cgpa || e.gpa) ? ` \\hfill \\textbf{GPA:} ${escapeLatex(e.cgpa || e.gpa)}` : ''}\\\\
+\\textit{${formatEduLatex(e.degree, e.branch || e.fieldOfStudy)}}${cleanText(e.cgpa || e.gpa) ? ` \\hfill \\textbf{GPA:} ${escapeLatex(e.cgpa || e.gpa)}` : ''}\\\\
 \\vspace{2pt}`).join('\n');
 
   const pubItems = (profile.publications || [])
@@ -310,9 +340,13 @@ ${cleanList([...(e.responsibilities || []), ...(e.bullets || [])]).map(b => `$\\
 ` : ''}
 
 ${(profile.projects || []).filter(pr => !isNAOrEmpty(pr.title)).length > 0 ? `\\section{Projects}
-${profile.projects.filter(pr => !isNAOrEmpty(pr.title)).map(pr => `\\textbf{${escapeLatex(pr.title)}}\\\\
-${cleanList([...(pr.keyFeatures || []), ...(pr.bullets || [])]).map(b => `$\\bullet$ ${escapeLatex(b)}\\\\`).join('\n')}
-\\vspace{2pt}`).join('\n')}
+${profile.projects.filter(pr => !isNAOrEmpty(pr.title)).map(pr => {
+  const { title, subtitle, bullets } = cleanProjectLatex(pr);
+  if (!title) return '';
+  return `\\textbf{${escapeLatex(title)}}${subtitle ? ` --- \\textit{${escapeLatex(subtitle)}}` : ''}\\\\
+${bullets.map(b => `$\\bullet$ ${escapeLatex(b)}\\\\`).join('\n')}
+\\vspace{2pt}`;
+}).filter(Boolean).join('\n')}
 ` : ''}
 
 \\end{document}
@@ -369,8 +403,20 @@ ${cleanList([...(e.responsibilities || []), ...(e.bullets || [])]).map(b => `  \
 \\vspace{3pt}`).join('\n')}
 ` : ''}
 
+${(profile.projects || []).filter(pr => !isNAOrEmpty(pr.title)).length > 0 ? `\\section{Key Initiatives \\& Projects}
+${profile.projects.filter(pr => !isNAOrEmpty(pr.title)).map(pr => {
+  const { title, subtitle, bullets } = cleanProjectLatex(pr);
+  if (!title) return '';
+  return `\\noindent\\textbf{${escapeLatex(title)}}${subtitle ? ` --- \\textit{${escapeLatex(subtitle)}}` : ''}\\\\
+\\begin{itemize}[leftmargin=15pt, itemsep=1pt, parsep=0pt]
+${bullets.map(b => `  \\item ${escapeLatex(b)}`).join('\n')}
+\\end{itemize}
+\\vspace{3pt}`;
+}).filter(Boolean).join('\n')}
+` : ''}
+
 ${(profile.education || []).filter(e => !isNAOrEmpty(e.institution)).length > 0 ? `\\section{Education \\& Credentials}
-${profile.education.filter(e => !isNAOrEmpty(e.institution)).map(e => `\\noindent\\textbf{${escapeLatex(e.degree)}${e.branch ? ` in ${escapeLatex(e.branch)}` : ''}}, ${escapeLatex(e.institution)} \\hfill ${escapeLatex(e.graduationYear || e.endDate)}\\\\`).join('\n')}
+${profile.education.filter(e => !isNAOrEmpty(e.institution)).map(e => `\\noindent\\textbf{${formatEduLatex(e.degree, e.branch || e.fieldOfStudy)}}, ${escapeLatex(e.institution)} \\hfill ${escapeLatex(e.graduationYear || e.endDate)}\\\\`).join('\n')}
 ` : ''}
 
 \\end{document}
@@ -421,15 +467,19 @@ ${cleanList([...(e.responsibilities || []), ...(e.bullets || [])]).map(b => `  \
 ` : ''}
 
 ${(profile.projects || []).filter(pr => !isNAOrEmpty(pr.title)).length > 0 ? `\\section{Projects}
-${profile.projects.filter(pr => !isNAOrEmpty(pr.title)).map(pr => `\\noindent\\textbf{${escapeLatex(pr.title)}}\\\\
+${profile.projects.filter(pr => !isNAOrEmpty(pr.title)).map(pr => {
+  const { title, subtitle, bullets } = cleanProjectLatex(pr);
+  if (!title) return '';
+  return `\\noindent\\textbf{${escapeLatex(title)}}${subtitle ? ` --- \\textit{${escapeLatex(subtitle)}}` : ''}\\\\
 \\begin{itemize}[leftmargin=10pt, itemsep=0.5pt, parsep=0pt]
-${cleanList([...(pr.keyFeatures || []), ...(pr.bullets || [])]).map(b => `  \\item ${escapeLatex(b)}`).join('\n')}
+${bullets.map(b => `  \\item ${escapeLatex(b)}`).join('\n')}
 \\end{itemize}
-\\vspace{2pt}`).join('\n')}
+\\vspace{2pt}`;
+}).filter(Boolean).join('\n')}
 ` : ''}
 
 ${(profile.education || []).filter(e => !isNAOrEmpty(e.institution)).length > 0 ? `\\section{Education}
-${profile.education.filter(e => !isNAOrEmpty(e.institution)).map(e => `\\noindent\\textbf{${escapeLatex(e.institution)}} --- ${escapeLatex(e.degree)}${e.branch ? ` in ${escapeLatex(e.branch)}` : ''} \\hfill ${escapeLatex(e.graduationYear || e.endDate)}\\\\`).join('\n')}
+${profile.education.filter(e => !isNAOrEmpty(e.institution)).map(e => `\\noindent\\textbf{${escapeLatex(e.institution)}} --- ${formatEduLatex(e.degree, e.branch || e.fieldOfStudy)} \\hfill ${escapeLatex(e.graduationYear || e.endDate)}\\\\`).join('\n')}
 ` : ''}
 
 \\end{document}

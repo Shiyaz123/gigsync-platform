@@ -446,11 +446,19 @@ def deterministic_python_fallback(text: str) -> Dict[str, Any]:
                 if curr_proj and curr_proj.get("title"):
                     projects.append(curr_proj)
                 title_match = re.match(r'^([A-Za-z0-9\s&()\'/]+?)(?:\s*[-–—:]\s*(.+))?$', pl)
-                title = title_match.group(1).strip() if title_match else pl
+                raw_title = title_match.group(1).strip() if title_match else pl
+                sub_desc = title_match.group(2).strip() if (title_match and title_match.group(2)) else None
+                # Strip trailing "Link", "GitHub", "Code" artifacts
+                raw_title = re.sub(r'\s*(?:[-–—|/]\s*)?(?:link|github|code|live\s*demo|view)\s*$', '', raw_title, flags=re.I).strip()
+                if sub_desc:
+                    sub_desc = re.sub(r'\s*(?:[-–—|/]\s*)?(?:link|github|code|live\s*demo|view)\s*$', '', sub_desc, flags=re.I).strip()
+                    if sub_desc.lower() == raw_title.lower():
+                        sub_desc = None
+
                 curr_proj = {
-                    "title": title or pl,
+                    "title": raw_title or pl,
                     "tech_stack": [s for s in extracted_skills if re.search(rf'\b{re.escape(s)}\b', pl, re.I)],
-                    "description": pl,
+                    "description": sub_desc,
                     "bullets": []
                 }
             elif curr_proj:

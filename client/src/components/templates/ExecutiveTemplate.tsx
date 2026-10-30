@@ -5,7 +5,10 @@ import {
   cleanList,
   isNAOrEmpty,
   getCategorizedSkills,
-  DEFAULT_SECTION_NAMES
+  DEFAULT_SECTION_NAMES,
+  formatEducationDegree,
+  cleanProjectEntry,
+  formatSafeUrl
 } from './templateUtils';
 
 interface TemplateProps {
@@ -46,6 +49,9 @@ export const ExecutiveTemplate: React.FC<TemplateProps> = ({
   const getTitle = (key: string, fallback: string) => customNames[key] || DEFAULT_SECTION_NAMES[key] || fallback;
   const isHidden = (key: string) => hiddenSections.includes(key);
 
+  const safeLinkedin = formatSafeUrl(linkedin);
+  const safeGithub = formatSafeUrl(github);
+
   const spacingClasses = {
     compact: 'space-y-3.5 text-xs',
     normal: 'space-y-5 text-xs sm:text-[13px]',
@@ -80,15 +86,27 @@ export const ExecutiveTemplate: React.FC<TemplateProps> = ({
           <div className="text-xs text-slate-600 sm:text-right font-medium space-y-0.5">
             {location && <div>{location}</div>}
             <div className="flex items-center sm:justify-end gap-2 flex-wrap">
-              {phone && <span>{phone}</span>}
+              {phone && <a href={`tel:${phone}`} className="hover:text-slate-950 hover:underline">{phone}</a>}
               {phone && email && <span>•</span>}
-              {email && <span>{email}</span>}
+              {email && <a href={`mailto:${email}`} className="hover:text-slate-950 hover:underline">{email}</a>}
             </div>
             {(linkedin || github) && (
               <div className="flex items-center sm:justify-end gap-2 text-slate-700">
-                {linkedin && <span>{linkedin.replace(/^https?:\/\/(www\.)?/i, '')}</span>}
+                {linkedin && (
+                  safeLinkedin ? (
+                    <a href={safeLinkedin} target="_blank" rel="noreferrer" className="hover:text-slate-950 hover:underline">
+                      {linkedin.replace(/^https?:\/\/(www\.)?linkedin\.com\/in\/?/i, 'LinkedIn/')}
+                    </a>
+                  ) : <span>{linkedin}</span>
+                )}
                 {linkedin && github && <span>•</span>}
-                {github && <span>{github.replace(/^https?:\/\/(www\.)?/i, '')}</span>}
+                {github && (
+                  safeGithub ? (
+                    <a href={safeGithub} target="_blank" rel="noreferrer" className="hover:text-slate-950 hover:underline">
+                      {github.replace(/^https?:\/\/(www\.)?github\.com\/?/i, 'GitHub/')}
+                    </a>
+                  ) : <span>{github}</span>
+                )}
               </div>
             )}
           </div>
@@ -137,7 +155,7 @@ export const ExecutiveTemplate: React.FC<TemplateProps> = ({
             const bullets = cleanList([...(exp.responsibilities || []), ...(exp.bullets || [])]);
 
             return (
-              <div key={exp.id || idx} className="space-y-1">
+              <div key={exp.id || idx} className="space-y-1 page-break-avoid break-inside-avoid">
                 <div className="flex flex-col sm:flex-row sm:items-baseline sm:justify-between text-xs">
                   <div>
                     <span className="font-bold text-slate-950 text-sm">{expRole}</span>
@@ -170,23 +188,37 @@ export const ExecutiveTemplate: React.FC<TemplateProps> = ({
             {getTitle('projects', 'Key Technical Initiatives & Projects')}
           </h2>
           {projList.map((proj, idx) => {
-            const title = cleanText(proj.title);
-            const desc = cleanText(proj.description);
-            const tech = cleanList([...(proj.technologies || []), ...(proj.techStack || [])]);
-            const bullets = cleanList([...(proj.keyFeatures || []), ...(proj.bullets || [])]);
-            const live = cleanText(proj.liveUrl || proj.githubUrl || proj.repoUrl);
+            const { title, subtitle, bullets, techStack, githubUrl, liveUrl } = cleanProjectEntry(proj);
+            if (!title) return null;
 
             return (
-              <div key={proj.id || idx} className="space-y-0.5">
-                <div className="flex justify-between items-baseline text-xs">
-                  <span className="font-bold text-slate-900">{title}</span>
-                  {tech.length > 0 && (
-                    <span className="text-slate-600 text-[11px] font-mono">
-                      {tech.join(', ')}
-                    </span>
+              <div key={proj.id || idx} className="space-y-1 page-break-avoid break-inside-avoid">
+                <div className="flex justify-between items-baseline text-xs flex-wrap gap-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-bold text-slate-900">{title}</span>
+                    {techStack.length > 0 && (
+                      <span className="text-slate-600 text-[11px] font-mono">
+                        ({techStack.join(', ')})
+                      </span>
+                    )}
+                  </div>
+                  {(githubUrl || liveUrl) && (
+                    <div className="flex items-center gap-2 text-[11px]">
+                      {githubUrl && (
+                        <a href={githubUrl} target="_blank" rel="noreferrer" className="text-slate-700 underline hover:text-slate-950">
+                          Repository
+                        </a>
+                      )}
+                      {githubUrl && liveUrl && <span>•</span>}
+                      {liveUrl && (
+                        <a href={liveUrl} target="_blank" rel="noreferrer" className="text-slate-700 underline hover:text-slate-950">
+                          Executive Demo
+                        </a>
+                      )}
+                    </div>
                   )}
                 </div>
-                {desc && <p className="text-slate-700 italic text-xs">{desc}</p>}
+                {subtitle && <p className="text-slate-700 italic text-xs">{subtitle}</p>}
                 {bullets.length > 0 && (
                   <ul className="list-disc list-outside pl-4 space-y-0.5 text-xs text-slate-700">
                     {bullets.map((b, bIdx) => (
@@ -229,16 +261,17 @@ export const ExecutiveTemplate: React.FC<TemplateProps> = ({
           </h2>
           {eduList.map((edu, idx) => {
             const inst = cleanText(edu.institution);
-            const degree = cleanText(edu.degree);
-            const branch = cleanText(edu.branch || edu.fieldOfStudy);
+            const eduDegreeText = formatEducationDegree(edu.degree, edu.branch || edu.fieldOfStudy);
             const year = cleanText(edu.graduationYear || edu.endDate);
             const gpa = cleanText(edu.cgpa || edu.gpa);
 
             return (
-              <div key={edu.id || idx} className="flex justify-between items-baseline text-xs">
+              <div key={edu.id || idx} className="flex justify-between items-baseline text-xs page-break-avoid break-inside-avoid">
                 <div>
-                  <span className="font-bold text-slate-950">{degree} {branch ? `in ${branch}` : ''}</span>
-                  <span className="text-slate-700 ml-1.5">— {inst}</span>
+                  <span className="font-bold text-slate-950">
+                    {eduDegreeText || inst}
+                  </span>
+                  {eduDegreeText && inst && <span className="text-slate-700 ml-1.5">— {inst}</span>}
                   {gpa && <span className="text-slate-600 font-medium ml-2">({gpa})</span>}
                 </div>
                 {year && <span className="text-slate-600 font-semibold">{year}</span>}

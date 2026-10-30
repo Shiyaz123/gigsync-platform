@@ -145,3 +145,135 @@ export const DEFAULT_SECTION_NAMES: Record<string, string> = {
   languages: 'Languages Known',
   interests: 'Interests'
 };
+
+/**
+ * Normalizes and formats Degree and Field of Study / Branch cleanly.
+ * Eliminates awkward dangling "in", "B.E. in", or duplicated fields.
+ */
+export function formatEducationDegree(degree?: string | null, branch?: string | null): string {
+  let d = cleanText(degree);
+  let b = cleanText(branch);
+
+  // Clean trailing "in", "of", "-", "–", or commas from degree
+  d = d.replace(/[\s,–—-]+$/g, '').trim();
+  d = d.replace(/\s+(?:in|of)\s*$/i, '').trim();
+
+  // Clean leading "in", "of", "-", "–" from branch
+  b = b.replace(/^[\s,–—-]+/g, '').trim();
+  b = b.replace(/^(?:in|of)\s+/i, '').trim();
+
+  if (!d && !b) return '';
+  if (d && !b) return d;
+  if (!d && b) return b;
+
+  // If degree already includes the branch (e.g. "B.E. in Computer Science")
+  const dLower = d.toLowerCase();
+  const bLower = b.toLowerCase();
+  if (dLower.includes(bLower)) {
+    return d;
+  }
+
+  return `${d} in ${b}`;
+}
+
+/**
+ * Formats a clean, safe web URL with protocol, or returns empty string if invalid or generic.
+ */
+export function formatSafeUrl(url?: string | null): string {
+  if (!url || isNAOrEmpty(url)) return '';
+  const trimmed = url.trim();
+
+  // Reject generic anchor labels like "Link", "View", "Website"
+  if (/^(link|url|website|click here|github|view|demo)$/i.test(trimmed)) {
+    return '';
+  }
+
+  if (/^https?:\/\//i.test(trimmed)) {
+    return trimmed;
+  }
+
+  // Handle common domains or handle-like patterns
+  if (/^(?:[a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}(?:\/.*)?$/.test(trimmed)) {
+    return `https://${trimmed}`;
+  }
+
+  return '';
+}
+
+export interface CleanedProject {
+  title: string;
+  subtitle: string;
+  bullets: string[];
+  techStack: string[];
+  githubUrl: string;
+  liveUrl: string;
+}
+
+/**
+ * Cleans a project entry:
+ * - Strips dangling "Link", "GitHub", "Code" artifact strings from title and description.
+ * - Eliminates exact duplicate titles rendered as descriptions.
+ * - Separates title and subtitle if merged with a hyphen/dash.
+ * - Deduplicates bullets against subtitle and title.
+ * - Validates GitHub and live URLs.
+ */
+export function cleanProjectEntry(proj: any): CleanedProject {
+  let title = cleanText(proj.title);
+  let desc = cleanText(proj.description);
+  const techStack = cleanList([...(proj.technologies || []), ...(proj.techStack || [])]);
+  let bullets = cleanList([...(proj.keyFeatures || []), ...(proj.bullets || [])]);
+
+  // Strip trailing "Link", "GitHub", "Code", "Live Demo" artifact suffixes from title
+  title = title.replace(/\s*(?:[-–—|/]\s*)?(?:link|github|code|live\s*demo|view)\s*$/i, '').trim();
+
+  // Strip trailing "Link" artifact from description
+  desc = desc.replace(/\s*(?:[-–—|/]\s*)?(?:link|github|code|live\s*demo|view)\s*$/i, '').trim();
+
+  // If title itself has a dash separator (e.g. "Protego – Emergency Response System")
+  // and desc is empty or identical, split title and subtitle
+  let subtitle = desc;
+
+  const titleSplit = title.match(/^([A-Za-z0-9\s&()'/]+?)\s*[-–—:]\s*(.+)$/);
+  if (titleSplit && !subtitle) {
+    title = titleSplit[1].trim();
+    subtitle = titleSplit[2].trim();
+  }
+
+  // If subtitle/desc is essentially identical to title, discard it to avoid duplication!
+  const normalizeForComparison = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+  if (normalizeForComparison(title) === normalizeForComparison(subtitle)) {
+    subtitle = '';
+  }
+
+  // If subtitle starts with the title followed by separator (e.g. "Protego – Emergency Response System")
+  if (subtitle) {
+    const subSplit = subtitle.match(/^([A-Za-z0-9\s&()'/]+?)\s*[-–—:]\s*(.+)$/);
+    if (subSplit && normalizeForComparison(subSplit[1]) === normalizeForComparison(title)) {
+      subtitle = subSplit[2].trim();
+    }
+  }
+
+  // If subtitle still matches title or is just a URL / "Link", clear it
+  if (normalizeForComparison(title) === normalizeForComparison(subtitle) || /^(link|view)$/i.test(subtitle)) {
+    subtitle = '';
+  }
+
+  // Deduplicate bullets against subtitle
+  if (subtitle) {
+    bullets = bullets.filter(b => normalizeForComparison(b) !== normalizeForComparison(subtitle));
+  }
+
+  // Validate URLs
+  const githubUrl = formatSafeUrl(proj.githubUrl || proj.repoUrl);
+  const liveUrl = formatSafeUrl(proj.liveUrl || proj.url);
+
+  return {
+    title,
+    subtitle,
+    bullets,
+    techStack,
+    githubUrl,
+    liveUrl
+  };
+}
+

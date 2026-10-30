@@ -378,11 +378,13 @@ export function parseResumeTextClient(rawText: string, filenameFallback?: string
         };
       } else if (currentEdu && degreeRegex.test(el)) {
         const degMatch = el.match(degreeRegex);
-        currentEdu.degree = degMatch ? degMatch[1].trim() : '';
+        let deg = degMatch ? degMatch[1].trim() : '';
+        deg = deg.replace(/[\s,–—-]+$/g, '').replace(/\s+(?:in|of)\s*$/i, '').trim();
+        currentEdu.degree = deg;
 
         const fieldMatch = el.match(/(?:in|of)\s+([A-Za-z\s&()]+?)(?=\s*CGPA|\s*GPA|\s*\d|\s*$)/i);
         if (fieldMatch) {
-          currentEdu.fieldOfStudy = fieldMatch[1].trim();
+          currentEdu.fieldOfStudy = fieldMatch[1].replace(/^[\s,–—-]+/g, '').trim();
         }
 
         const gpaMatch = el.match(gpaRegex);
@@ -553,12 +555,22 @@ export function parseResumeTextClient(rawText: string, filenameFallback?: string
           projectItems.push(finalizeProj(currentProj));
         }
         const titleMatch = pl.match(/^([A-Za-z0-9\s&()'/]+?)(?:\s*[-–—:]\s*(.+))?$/);
-        const title = titleMatch ? titleMatch[1].trim() : pl;
+        let rawTitle = titleMatch ? titleMatch[1].trim() : pl;
+        let subtitle = (titleMatch && titleMatch[2]) ? titleMatch[2].trim() : '';
+
+        // Strip trailing "Link", "GitHub", "Code" from rawTitle & subtitle
+        rawTitle = rawTitle.replace(/\s*(?:[-–—|/]\s*)?(?:link|github|code|live\s*demo|view)\s*$/i, '').trim();
+        subtitle = subtitle.replace(/\s*(?:[-–—|/]\s*)?(?:link|github|code|live\s*demo|view)\s*$/i, '').trim();
+
+        if (subtitle.toLowerCase() === rawTitle.toLowerCase()) {
+          subtitle = '';
+        }
+
         currentProj = {
           id: `proj_parsed_${projectItems.length + 1}`,
-          title: title || pl,
+          title: rawTitle || pl,
           techStack: [],
-          description: pl,
+          description: subtitle,
           bullets: []
         };
       } else if (currentProj) {
@@ -689,12 +701,17 @@ function finalizeExp(partial: Partial<ExperienceItem>): ExperienceItem {
 }
 
 function finalizeProj(partial: Partial<ProjectItem>): ProjectItem {
+  let title = (partial.title || '').replace(/\s*(?:[-–—|/]\s*)?(?:link|github|code|live\s*demo|view)\s*$/i, '').trim();
+  let desc = (partial.description || '').replace(/\s*(?:[-–—|/]\s*)?(?:link|github|code|live\s*demo|view)\s*$/i, '').trim();
+  if (desc.toLowerCase() === title.toLowerCase()) {
+    desc = '';
+  }
   return {
     id: partial.id || `proj_${Date.now()}`,
-    title: partial.title || '',
+    title,
     techStack: partial.techStack || [],
-    description: partial.description || '',
-    bullets: partial.bullets || (partial.description ? [partial.description] : []),
+    description: desc,
+    bullets: partial.bullets || (desc ? [desc] : []),
     confirmed: false
   };
 }
